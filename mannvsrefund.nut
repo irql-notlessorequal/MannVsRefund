@@ -16,14 +16,15 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-const CREDITS_MESSAGE = "MannVsRefund by rake. MvM Upgrades script by Lazyneer"
-const REFUND_OK = "Upgrades reset, your money has been refunded."
-const REFUND_HINT = "Use /refund or !refund to reset your upgrades."
-const REFUND_FAIL = "You can only refund at a resupply locker."
+const CREDITS_MESSAGE = "MannVsRefund by rake.\nBased on the MvM Upgrades script by Lazyneer."
+const REFUND_OK = "\x05Upgrades reset, your money has been refunded.\x01"
+const REFUND_HINT = "Type /refund or !refund in chat to reset your upgrades."
+const REFUND_FAIL = "\x07AA0000You can only refund at a resupply locker.\x01"
 const HUD_PRINTTALK = 3
 const DEBUG = false // Set to true to print round info to the server console
 const MONEY_VANISH_SOUND = "mvm/mvm_money_vanish.wav"
 const UPGRADE_VO_COUNT = 11
+const FLAG_DEAD_RINGER = 32
 
 // if one team is far ahead on kills this round, the other team earns more
 const TEAM_RED = 2
@@ -168,7 +169,9 @@ function OnGameEvent_player_say(params)
             ClientPrint(client, HUD_PRINTTALK, REFUND_OK)
         }
         else
+        {
             ClientPrint(client, HUD_PRINTTALK, REFUND_FAIL)
+        }
     }
 }
 
@@ -244,11 +247,11 @@ function GetSteamrolledTeam()
     local red = teamKills[TEAM_RED]
     local blu = teamKills[TEAM_BLU]
 
-    if(red + blu < STEAMROLL_MIN_KILLS)
+    if (red + blu < STEAMROLL_MIN_KILLS)
         return -1
-    if(red >= blu * STEAMROLL_RATIO)
+    if (red >= blu * STEAMROLL_RATIO)
         return TEAM_BLU
-    if(blu >= red * STEAMROLL_RATIO)
+    if (blu >= red * STEAMROLL_RATIO)
         return TEAM_RED
     return -1
 }
@@ -265,20 +268,19 @@ function AddCurrency(client, cash)
 
 function OnGameEvent_player_death(params)
 {
-    // Dead Ringer
-    if(params.death_flags & 32)
+    if (params.death_flags & FLAG_DEAD_RINGER)
         return
 
     local attacker = GetPlayerFromUserID(params.attacker)
     local assister = GetPlayerFromUserID(params.assister)
     local victim = GetPlayerFromUserID(params.userid)
 
-    if(attacker != null)
+    if (attacker != null)
     {
         if (attacker != victim && attacker.GetTeam() != victim.GetTeam())
         {
             local attackerTeam = attacker.GetTeam()
-            if(attackerTeam in teamKills)
+            if (attackerTeam in teamKills)
                 teamKills[attackerTeam] += 1
 
             AddCurrency(attacker, 100)
@@ -309,26 +311,26 @@ function OnGameEvent_teamplay_point_captured(params)
     for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
     {
         local client = PlayerInstanceFromIndex(i)
-        if(client == null)
+        if (client == null)
             continue
 
         // 100 is added to the cappers without hooking this event
         // Cappers get 200, the rest of the team 100
-        if(client.GetTeam() == params.team)
+        if (client.GetTeam() == params.team)
             AddCurrency(client, 100)
     }
 }
 
 function OnGameEvent_teamplay_flag_event(params)
 {
-    //Capture
+    // Captured..
     if (params.eventtype == 2)
     {
         local player = PlayerInstanceFromIndex(params.player)
         for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
         {
             local client = PlayerInstanceFromIndex(i)
-            if(client == null)
+            if (client == null)
                 continue
 
             if (client == player)
