@@ -50,10 +50,22 @@ const STEAMROLL_MIN_KILLS = 20   // Total kills needed before a steamroll can be
 const STEAMROLL_RATIO = 2.0      // Leading team needs this many times the other team's kills
 const STEAMROLL_BONUS = 1.1      // Income multiplier for the losing team
 
+// MvM buyback logic.
+const BUYBACK_MAX_COST = 300         // Price right after dying
+const BUYBACK_MIN_COST = 100         // Price just before buy-back closes
+const BUYBACK_CUTOFF = 3.0           // Buy-back closes this many seconds before the respawn
+const BUYBACK_THINK_INTERVAL = 0.05  // How often dead players' buttons are checked
+const BUYBACK_HUD_INTERVAL = 1.0     // How often the HUD text is refreshed
+const BUYBACK_PRICE_STEP = 20        // The price drops in steps of this much (keep the min and max costs a multiple of it)
+const BUYBACK_BUTTON = 8192          // IN_RELOAD
+const BUYBACK_HUD_CHANNEL = 2        // game_text channel (0-5) used for the buy-back text
+const BUYBACK_DENIED_SOUND = "replay/cameracontrolerror.wav"
+
 // MvM sounds aren't precached on non-MvM maps
 function PrecacheUpgradeSounds()
 {
     PrecacheSound(MONEY_VANISH_SOUND)
+    PrecacheSound(BUYBACK_DENIED_SOUND)
     for (local i = 1; i <= UPGRADE_VO_COUNT; i++)
         PrecacheSound(format("vo/mvm_get_to_upgrade%02d.mp3", i))
 }
@@ -63,6 +75,9 @@ hasRecievedCash <- {}
 deathStreak <- {}
 earnedCash <- {} // Total currency each player has received this round
 reviveMarkers <- {} // Each player's current revive marker entity, if any
+buybackState <- {} // Each player's buy-back tracking (time of death and current cost)
+roundRunning <- false // True while the round is live, which is when respawn waves run
+arenaMode <- false // Arena has no respawn waves, so there's no buy-back there
 teamKills <- {}  // Kills per team this round, used for steamroll detection
 teamKills[TEAM_RED] <- 0
 teamKills[TEAM_BLU] <- 0
@@ -72,6 +87,7 @@ for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
     deathStreak[i] <- 0
     earnedCash[i] <- 0
     reviveMarkers[i] <- null
+    buybackState[i] <- { deathTime = -1.0, window = -1.0, held = false, nextHud = 0.0, estimate = -1.0, hud = null }
 }
 
 function OnGameEvent_teamplay_round_start(params)
@@ -81,6 +97,11 @@ function OnGameEvent_teamplay_round_start(params)
 
     teamKills[TEAM_RED] = 0
     teamKills[TEAM_BLU] = 0
+
+    roundRunning = false
+    arenaMode = IsArenaMode()
+    for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
+        ResetBuybackState(i)
 
     ClearReviveMarkers()
     ForceEnableUpgrades(2)
@@ -105,6 +126,11 @@ function OnGameEvent_teamplay_round_start(params)
 // Defined on the root table so the delayed RunScriptCode call can find it from any scope
 ::PlayUpgradeVO <- function()
 {
+    // Why the hell does TF2 emit teamplay_round_start during Waiting For Players?
+    local rules = Entities.FindByClassname(null, "tf_gamerules")
+    if (rules != null && NetProps.GetPropBool(rules, "m_bInWaitingForPlayers"))
+        return
+
     EmitSoundEx({
         sound_name  = format("vo/mvm_get_to_upgrade%02d.mp3", RandomInt(1, UPGRADE_VO_COUNT)),
         filter_type = Constants.EScriptRecipientFilter.RECIPIENT_FILTER_GLOBAL
@@ -118,13 +144,26 @@ function OnGameEvent_teamplay_round_win(params)
     if (DEBUG)
         printl("round_win: full_round=" + params.full_round)
 
+    roundRunning = false
+
     if (params.full_round)
         ResetPlayers()
 }
 
 function OnGameEvent_teamplay_restart_round(params)
 {
+    roundRunning = false
     ResetPlayers()
+}
+
+function OnGameEvent_teamplay_round_active(params)
+{
+    roundRunning = true
+}
+
+function OnGameEvent_teamplay_round_stalemate(params)
+{
+    roundRunning = false
 }
 
 function OnGameEvent_player_spawn(params)
@@ -135,6 +174,12 @@ function OnGameEvent_player_spawn(params)
 
     // Spawning, whether revived or respawned normally, ends their marker
     RemoveReviveMarker(client)
+
+    // ...and their chance to buy back
+    local buyback = buybackState[client.entindex()]
+    if (DEBUG && buyback.estimate > 0.0)
+        printl("buyback: respawn estimate was off by " + (Time() - buyback.estimate) + "s")
+    ResetBuybackState(client.entindex())
 
     if (!hasRecievedCash[client.entindex()])
     {
@@ -150,7 +195,8 @@ function OnGameEvent_player_spawn(params)
         deathStreak[client.entindex()] = 0
     }
 
-    ClientPrint(client, HUD_PRINTTALK, REFUND_HINT)
+    if (!IsWaitingForPlayers())
+        ClientPrint(client, HUD_PRINTTALK, REFUND_HINT)
 }
 
 function OnGameEvent_player_say(params)
@@ -197,6 +243,7 @@ function OnGameEvent_player_disconnect(params)
         hasRecievedCash[client.entindex()] = false
         deathStreak[client.entindex()] = 0
         earnedCash[client.entindex()] = 0
+        ResetBuybackState(client.entindex())
     }
 }
 
@@ -386,6 +433,309 @@ function AddCurrency(client, cash)
     earnedCash[client.entindex()] += cash
 }
 
+function IsWaitingForPlayers()
+{
+    local rules = Entities.FindByClassname(null, "tf_gamerules")
+    return rules != null && NetProps.GetPropBool(rules, "m_bInWaitingForPlayers")
+}
+
+function GetBuybackDelay()
+{
+    return 2.0 + GetConvarFloat("spec_freeze_traveltime", 0.4) + GetConvarFloat("spec_freeze_time", 4.0)
+}
+
+function ShowBuybackHud(client, state, text)
+{
+    if (state.hud == null || !state.hud.IsValid())
+    {
+        state.hud = SpawnEntityFromTable("game_text",
+        {
+            targetname  = "vscript_buyback_hud",
+            message     = text,
+            x           = -1,
+            y           = 0.7,
+            effect      = 0,
+            color       = "255 255 255",
+            color2      = "255 255 255",
+            fadein      = 0,
+            fadeout     = 0,
+            holdtime    = BUYBACK_HUD_INTERVAL + 0.25,
+            channel     = BUYBACK_HUD_CHANNEL,
+            spawnflags  = 0
+        })
+    }
+
+    state.hud.KeyValueFromString("message", text)
+    EntFireByHandle(state.hud, "Display", "", 0.0, client, client)
+}
+
+function RemoveBuybackHud(client, state)
+{
+    local hud = state.hud
+    if (hud == null)
+        return
+
+    state.hud = null
+    if (!hud.IsValid())
+        return
+
+    // FIXME: Is this workaround needed??
+    if (client != null)
+    {
+        hud.KeyValueFromString("message", " ")
+        hud.KeyValueFromFloat("holdtime", 0.1)
+        EntFireByHandle(hud, "Display", "", 0.0, client, client)
+    }
+
+    EntFireByHandle(hud, "Kill", "", 0.1, null, null)
+}
+
+function ClearBuybackHuds()
+{
+    for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
+    {
+        local state = buybackState[i]
+        if (state.hud != null)
+            RemoveBuybackHud(PlayerInstanceFromIndex(i), state)
+    }
+}
+
+function ResetBuybackState(idx)
+{
+    local state = buybackState[idx]
+    RemoveBuybackHud(PlayerInstanceFromIndex(idx), state)
+    state.deathTime = -1.0
+    state.window = -1.0
+    state.held = false
+    state.nextHud = 0.0
+    state.estimate = -1.0
+}
+
+function StartBuybackTracking(victim)
+{
+    local state = buybackState[victim.entindex()]
+    ResetBuybackState(victim.entindex())
+    state.deathTime = Time()
+
+    // Avoid accidental presses of the button(TM)
+    state.held = (NetProps.GetPropInt(victim, "m_nButtons") & BUYBACK_BUTTON) != 0
+}
+
+function GetConvarFloat(name, fallback)
+{
+    local value = Convars.GetFloat(name)
+    return value == null ? fallback : value
+}
+
+function CountTeamPlayers(team)
+{
+    local count = 0
+    for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
+    {
+        local player = PlayerInstanceFromIndex(i)
+        if (player != null && player.GetTeam() == team)
+            count++
+    }
+    return count
+}
+
+// Taken from CTeamplayRoundBasedRules::GetRespawnWaveMaxLength.
+// Returns 0 when there are no respawn waves.
+function GetWaveLength(team, scaled)
+{
+    local rules = Entities.FindByClassname(null, "tf_gamerules")
+    if (rules == null || GetConvarFloat("mp_disable_respawn_times", 0.0) != 0.0)
+        return 0.0
+
+    // A team specific time (e.g. set by the map) overrides mp_respawnwavetime
+    local length = NetProps.GetPropFloatArray(rules, "m_TeamRespawnWaveTimes", team)
+    if (length < 0.0)
+        length = GetConvarFloat("mp_respawnwavetime", 10.0)
+
+    // Small teams get shorter waves, but never under 5 seconds
+    if (scaled && length > 5.0)
+    {
+        local scalar = (CountTeamPlayers(team) - 1) / 7.0
+        if (scalar < 0.0)
+            scalar = 0.0
+        if (scalar > 1.0)
+            scalar = 1.0
+
+        length = length * (0.25 + 0.75 * scalar)
+        if (length < 5.0)
+            length = 5.0
+    }
+    return length
+}
+
+// Taken from CTeamplayRoundBasedRules::GetNextRespawnWave.
+// Returns the game time the player will respawn at, or -1 if it can't be worked out.
+function GetRespawnTime(client)
+{
+    local state = buybackState[client.entindex()]
+    local rules = Entities.FindByClassname(null, "tf_gamerules")
+    if (rules == null || state.deathTime < 0.0)
+        return -1.0
+
+    local team = client.GetTeam()
+    local waveLength = GetWaveLength(team, true)
+    if (waveLength <= 0.0)
+        return -1.0
+
+    local nextWave = NetProps.GetPropFloatArray(rules, "m_flNextRespawnWave", team)
+    if (nextWave <= 0.0)
+        return -1.0
+
+    // The earliest a player may spawn: the death animation
+    // and freeze panel, plus one full unscaled wave
+    local deathAnim = 2.0 + GetConvarFloat("spec_freeze_traveltime", 0.4) + GetConvarFloat("spec_freeze_time", 4.0)
+    local earliest = state.deathTime + deathAnim + GetWaveLength(team, false)
+
+    // Waves keep coming every waveLength; they spawn in the first one that is late enough
+    local guard = 0
+    while (nextWave < earliest && guard < 100)
+    {
+        nextWave += waveLength
+        guard++
+    }
+    return nextWave
+}
+
+// The price falls from BUYBACK_MAX_COST to BUYBACK_MIN_COST
+// as the cutoff approaches, stepping by BUYBACK_PRICE_STEP
+function GetBuybackPrice(window, remaining)
+{
+    local span = window - BUYBACK_CUTOFF
+    local fraction = span > 0.0 ? (remaining - BUYBACK_CUTOFF) / span : 0.0
+    if (fraction < 0.0)
+        fraction = 0.0
+    if (fraction > 1.0)
+        fraction = 1.0
+
+    local price = (BUYBACK_MIN_COST + (BUYBACK_MAX_COST - BUYBACK_MIN_COST) * fraction + 0.5).tointeger()
+    return ((price + BUYBACK_PRICE_STEP / 2) / BUYBACK_PRICE_STEP) * BUYBACK_PRICE_STEP
+}
+
+function BroadcastTeamColoredMessage(player, actionText)
+{
+    if (player == null || !player.IsPlayer())
+        return
+
+    local teamNum = player.GetTeam()
+    local colorCode = "\x01"
+
+    if (teamNum == 2) {
+        colorCode = "\x07FF3D3D"
+    } else if (teamNum == 3) {
+        colorCode = "\x079ACDFF"
+    } else if (teamNum == 1) {
+        colorCode = "\x07CCCCCC"
+    }
+
+    local playerName = NetProps.GetPropString(player, "m_szNetname")
+    local coloredName = colorCode + playerName + "\x01"
+    local finalMessage = coloredName + " " + actionText
+
+    ClientPrint(null, HUD_PRINTTALK, finalMessage)
+}
+
+function TryBuyback(client, price, state)
+{
+    if (client.GetCurrency() < price)
+    {
+        EmitSoundEx({
+            sound_name  = BUYBACK_DENIED_SOUND,
+            entity      = client,
+            filter_type = Constants.EScriptRecipientFilter.RECIPIENT_FILTER_SINGLE_PLAYER
+        })
+        return
+    }
+
+    client.SetCurrency(client.GetCurrency() - price)
+
+    // Money spent on buy-back isn't refundable
+    local idx = client.entindex()
+    earnedCash[idx] -= price
+    if (earnedCash[idx] < 0)
+        earnedCash[idx] = 0
+
+    RemoveBuybackHud(client, state)
+    state.estimate = -1.0
+    client.ForceRespawn()
+
+    BroadcastTeamColoredMessage(client, format("has \x05bought back\x01 into the game for %d credits!", price))
+}
+
+// Runs on worldspawn's think.
+function BuybackThink()
+{
+    if (!roundRunning || arenaMode)
+    {
+        ClearBuybackHuds()
+        return BUYBACK_THINK_INTERVAL
+    }
+
+    local now = Time()
+    local delay = GetBuybackDelay()
+    for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
+    {
+        local client = PlayerInstanceFromIndex(i)
+        if (client == null)
+            continue
+
+        local state = buybackState[i]
+        if (state.deathTime < 0.0)
+            continue
+
+        // Only dead players on a team (not spectators) can buy back
+        if (NetProps.GetPropInt(client, "m_lifeState") == 0 || client.GetTeam() < TEAM_RED)
+            continue
+
+        // Track the key from the moment of death, so a press made during the
+        // freeze cam can't carry over into the buy-back window
+        local held = (NetProps.GetPropInt(client, "m_nButtons") & BUYBACK_BUTTON) != 0
+        local pressed = held && !state.held
+        state.held = held
+
+        local respawn = GetRespawnTime(client)
+        if (respawn < 0.0)
+            continue
+
+        state.estimate = respawn
+
+        // Buy-back window is after the freeze cam but shortly before respawning.
+        local opens = state.deathTime + delay
+        local remaining = respawn - now
+        if (now < opens)
+            continue
+
+        if (remaining - BUYBACK_CUTOFF <= 0.0)
+        {
+            RemoveBuybackHud(client, state)
+            continue
+        }
+
+        // Pin the price curve to how long this window turned out to be
+        if (state.window < 0.0)
+            state.window = respawn - opens
+
+        local price = GetBuybackPrice(state.window, remaining)
+        if (pressed)
+        {
+            TryBuyback(client, price, state)
+            continue
+        }
+
+        if (now >= state.nextHud)
+        {
+            ShowBuybackHud(client, state, format("Press RELOAD to buy back into the game for $%d", price))
+            state.nextHud = now + BUYBACK_HUD_INTERVAL
+        }
+    }
+
+    return BUYBACK_THINK_INTERVAL
+}
+
 function OnGameEvent_player_death(params)
 {
     if (params.death_flags & FLAG_DEAD_RINGER)
@@ -394,6 +744,9 @@ function OnGameEvent_player_death(params)
     local attacker = GetPlayerFromUserID(params.attacker)
     local assister = GetPlayerFromUserID(params.assister)
     local victim = GetPlayerFromUserID(params.userid)
+
+    if (victim != null)
+        StartBuybackTracking(victim)
 
     // Do we have a medic? If so spawn a reanimator for said medic.
     // FIXME: This probably should be generalized to a medic in general?
@@ -467,5 +820,12 @@ function OnGameEvent_teamplay_flag_event(params)
         }
     }
 }
+
+// worldspawn is never removed, so a think on it runs for the whole map.
+// bindenv keeps the script's own functions and variables visible inside the think.
+local world = Entities.FindByClassname(null, "worldspawn")
+world.ValidateScriptScope()
+world.GetScriptScope().BuybackThink <- BuybackThink.bindenv(this)
+AddThinkToEnt(world, "BuybackThink")
 
 __CollectGameEventCallbacks(this)
