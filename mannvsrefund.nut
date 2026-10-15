@@ -60,6 +60,7 @@ const BUYBACK_MAX_COST = 300         // Price right after dying
 const BUYBACK_MIN_COST = 100         // Price just before buy-back closes
 const BUYBACK_CUTOFF = 3.0           // Buy-back closes this many seconds before the respawn
 const BUYBACK_THINK_INTERVAL = 0.05  // How often dead players' buttons are checked
+const BUYBACK_IDLE_INTERVAL = 0.25   // Think rate when nobody is dead
 const BUYBACK_HUD_INTERVAL = 1.0     // How often the HUD text is refreshed
 const BUYBACK_PRICE_STEP = 20        // The price drops in steps of this much (keep the min and max costs a multiple of it)
 const BUYBACK_BUTTON = 8192          // IN_RELOAD
@@ -67,6 +68,10 @@ const BUYBACK_HUD_CHANNEL = 2        // game_text channel (0-5) used for the buy
 const BUYBACK_DENIED_SOUND = "replay/cameracontrolerror.wav"
 const BUYBACK_BOUGHT_IN_SOUND = "mvm/mvm_bought_in.wav"
 const BUYBACK_MIN_WINDOW = 5.0       // Buy-back must stay open at least this long to be offered at all (very short respawns skip it)
+
+// performance duct tape
+const SLOW_WORK_INTERVAL = 0.25      // How often setup and canteen checks run
+const WAVE_CACHE_INTERVAL = 0.5      // How often respawn wave lengths are recalculated
 
 // Sound for receiving money
 const MONEY_PICKUP_SOUND = "mvm/mvm_money_pickup.wav"
@@ -89,8 +94,11 @@ deathStreak <- {}
 earnedCash <- {} // Total currency each player has received this round
 reviveMarkers <- {} // Each player's current revive marker entity, if any
 buybackState <- {} // Each player's buy-back tracking (time of death and current cost)
+buybackDead <- {} // Players currently tracked as dead, so the think doesn't scan everyone
 moneySoundTime <- {} // When each player last heard the pickup sound
 canteenWatch <- {} // Each player's last seen canteen charges and money
+waveCache <- { time = -100.0, rules = null, delay = 0.0, scaled = {}, unscaled = {} } // Wave lengths are expensive
+slowWorkTime <- 0.0 // When the setup and canteen checks next run
 roundRunning <- false // True while the round is live, which is when respawn waves run
 arenaMode <- false // Arena has no respawn waves, so there's no buy-back there
 setupActive <- false // True when we are in pre-round setup
@@ -103,7 +111,7 @@ for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
     deathStreak[i] <- 0
     earnedCash[i] <- 0
     reviveMarkers[i] <- null
-    buybackState[i] <- { deathTime = -1.0, window = -1.0, held = false, nextHud = 0.0, estimate = -1.0, hud = null, skip = false }
+    buybackState[i] <- { deathTime = -1.0, window = -1.0, held = false, nextHud = 0.0, estimate = -1.0, hud = null, skip = false, opened = false }
     moneySoundTime[i] <- 0.0
     canteenWatch[i] <- { charges = 0, currency = 0 }
 }
@@ -529,11 +537,11 @@ function RemoveBuybackHud(client, state)
 
 function ClearBuybackHuds()
 {
-    for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
+    foreach (idx, tracked in buybackDead)
     {
-        local state = buybackState[i]
+        local state = buybackState[idx]
         if (state.hud != null)
-            RemoveBuybackHud(PlayerInstanceFromIndex(i), state)
+            RemoveBuybackHud(PlayerInstanceFromIndex(idx), state)
     }
 }
 
@@ -541,22 +549,24 @@ function ResetBuybackState(idx)
 {
     local state = buybackState[idx]
     RemoveBuybackHud(PlayerInstanceFromIndex(idx), state)
+    if (idx in buybackDead)
+        delete buybackDead[idx]
+
     state.deathTime = -1.0
     state.window = -1.0
     state.held = false
     state.nextHud = 0.0
     state.estimate = -1.0
     state.skip = false
+    state.opened = false
 }
 
 function StartBuybackTracking(victim)
 {
-    local state = buybackState[victim.entindex()]
-    ResetBuybackState(victim.entindex())
-    state.deathTime = Time()
-
-    // Avoid accidental presses of the button(TM)
-    state.held = (NetProps.GetPropInt(victim, "m_nButtons") & BUYBACK_BUTTON) != 0
+    local idx = victim.entindex()
+    ResetBuybackState(idx)
+    buybackState[idx].deathTime = Time()
+    buybackDead[idx] <- true
 }
 
 function GetConvarFloat(name, fallback)
@@ -568,13 +578,29 @@ function GetConvarFloat(name, fallback)
 function CountTeamPlayers(team)
 {
     local count = 0
-    for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
+    local player = null
+    while (player = Entities.FindByClassname(player, "player"))
     {
-        local player = PlayerInstanceFromIndex(i)
-        if (player != null && player.GetTeam() == team)
+        if (player.GetTeam() == team)
             count++
     }
     return count
+}
+
+// Wave lengths and the freeze delay don't change often...
+function RefreshWaveCache(now)
+{
+    if (now - waveCache.time < WAVE_CACHE_INTERVAL)
+        return
+
+    waveCache.time = now
+    waveCache.rules = Entities.FindByClassname(null, "tf_gamerules")
+    waveCache.delay = GetBuybackDelay()
+    foreach (team in [TEAM_RED, TEAM_BLU])
+    {
+        waveCache.scaled[team] <- GetWaveLength(team, true)
+        waveCache.unscaled[team] <- GetWaveLength(team, false)
+    }
 }
 
 // Taken from CTeamplayRoundBasedRules::GetRespawnWaveMaxLength.
@@ -611,12 +637,15 @@ function GetWaveLength(team, scaled)
 function GetRespawnTime(client)
 {
     local state = buybackState[client.entindex()]
-    local rules = Entities.FindByClassname(null, "tf_gamerules")
-    if (rules == null || state.deathTime < 0.0)
+    local rules = waveCache.rules
+    if (rules == null || !rules.IsValid() || state.deathTime < 0.0)
         return -1.0
 
     local team = client.GetTeam()
-    local waveLength = GetWaveLength(team, true)
+    if (!(team in waveCache.scaled))
+        return -1.0
+
+    local waveLength = waveCache.scaled[team]
     if (waveLength <= 0.0)
         return -1.0
 
@@ -626,8 +655,7 @@ function GetRespawnTime(client)
 
     // The earliest a player may spawn: the death animation
     // and freeze panel, plus one full unscaled wave
-    local deathAnim = GetBuybackDelay()
-    local earliest = state.deathTime + deathAnim + GetWaveLength(team, false)
+    local earliest = state.deathTime + waveCache.delay + waveCache.unscaled[team]
 
     // Waves keep coming every waveLength; they spawn in the first one that is late enough
     local guard = 0
@@ -787,14 +815,12 @@ function WatchCanteenPurchases()
         seen[idx] <- true
     }
 
-    for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
+    local player = null
+    while (player = Entities.FindByClassname(player, "player"))
     {
-        local player = PlayerInstanceFromIndex(i)
-        if (player == null)
-            continue
-
-        local watch = canteenWatch[i]
-        if (!(i in seen))
+        local idx = player.entindex()
+        local watch = canteenWatch[idx]
+        if (!(idx in seen))
             watch.charges = 0
         watch.currency = player.GetCurrency()
     }
@@ -803,36 +829,45 @@ function WatchCanteenPurchases()
 // Runs on worldspawn's think.
 function OnWorldSpawnThink()
 {
-    UpdateBuildingsDuringSetup()
-    WatchCanteenPurchases()
+    local now = Time()
+    if (now >= slowWorkTime)
+    {
+        slowWorkTime = now + SLOW_WORK_INTERVAL
+        UpdateBuildingsDuringSetup()
+        WatchCanteenPurchases()
+    }
 
     if (!roundRunning || arenaMode)
     {
         ClearBuybackHuds()
-        return BUYBACK_THINK_INTERVAL
+        return BUYBACK_IDLE_INTERVAL
     }
 
-    local now = Time()
-    local delay = GetBuybackDelay()
-    for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
+    // The dead players being tracked. This is copied.
+    local dead = []
+    foreach (idx, tracked in buybackDead)
+        dead.append(idx)
+
+    if (dead.len() == 0)
+        return BUYBACK_IDLE_INTERVAL
+
+    RefreshWaveCache(now)
+
+    local fast = false
+    foreach (idx in dead)
     {
-        local client = PlayerInstanceFromIndex(i)
+        local client = PlayerInstanceFromIndex(idx)
         if (client == null)
+        {
+            ResetBuybackState(idx)
             continue
+        }
 
-        local state = buybackState[i]
-        if (state.deathTime < 0.0)
-            continue
+        local state = buybackState[idx]
 
-        // Only dead players on a team (not spectators) can buy back
+        // Only dead players can buy back...
         if (NetProps.GetPropInt(client, "m_lifeState") == 0 || client.GetTeam() < TEAM_RED)
             continue
-
-        // Track the key from the moment of death, so a press made during the
-        // freeze cam can't carry over into the buy-back window
-        local held = (NetProps.GetPropInt(client, "m_nButtons") & BUYBACK_BUTTON) != 0
-        local pressed = held && !state.held
-        state.held = held
 
         local respawn = GetRespawnTime(client)
         if (respawn < 0.0)
@@ -841,10 +876,20 @@ function OnWorldSpawnThink()
         state.estimate = respawn
 
         // Buy-back window is after the freeze cam but shortly before respawning.
-        local opens = state.deathTime + delay
+        local opens = state.deathTime + waveCache.delay
         local remaining = respawn - now
         if (now < opens)
             continue
+
+        // Avoid accidental presses of the button(TM)
+        local held = (NetProps.GetPropInt(client, "m_nButtons") & BUYBACK_BUTTON) != 0
+        if (!state.opened)
+        {
+            state.opened = true
+            state.held = held
+        }
+        local pressed = held && !state.held
+        state.held = held
 
         // Is the buyback window worth opening to the player?
         if (state.window < 0.0)
@@ -863,6 +908,7 @@ function OnWorldSpawnThink()
             continue
         }
 
+        fast = true
         local price = GetBuybackPrice(state.window, remaining)
         if (pressed)
         {
@@ -877,7 +923,7 @@ function OnWorldSpawnThink()
         }
     }
 
-    return BUYBACK_THINK_INTERVAL
+    return fast ? BUYBACK_THINK_INTERVAL : BUYBACK_IDLE_INTERVAL
 }
 
 function OnGameEvent_player_death(params)
