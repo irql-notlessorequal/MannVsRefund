@@ -24,13 +24,11 @@ const HUD_PRINTTALK = 3
 const DEBUG = false // Set to true to print round info to the server console
 const MONEY_VANISH_SOUND = "mvm/mvm_money_vanish.wav"
 const FLAG_EVENT_CAPTURE = 2
+const SETUP_BUILDING_LEVEL = 3
+const OBJECT_TYPE_SAPPER = 3
 const NUM_CLASSES = 9
 const UPGRADE_VO_COUNT = 11
 const FLAG_DEAD_RINGER = 32
-
-// I'm not sure if we can force a building to Level 3 through VScript,
-// this is closest compromise that I could come up with...
-const SETUP_UPGRADE_PER_HIT = 200
 
 // I'm going to be a jerk and just assume your spending it all on Crit Canteens
 const CANTEEN_MAX_CHARGE_COST = 100
@@ -96,7 +94,6 @@ canteenWatch <- {} // Each player's last seen canteen charges and money
 roundRunning <- false // True while the round is live, which is when respawn waves run
 arenaMode <- false // Arena has no respawn waves, so there's no buy-back there
 setupActive <- false // True when we are in pre-round setup
-setupUpgradePerHit <- 25 // We're just mirroring tf_obj_upgrade_per_hit lol
 teamKills <- {}  // Kills per team this round, used for steamroll detection
 teamKills[TEAM_RED] <- 0
 teamKills[TEAM_BLU] <- 0
@@ -726,18 +723,30 @@ function UpdateBuildingsDuringSetup()
     local value = inSetup ? 1 : 0
     Convars.SetValue("tf_cheapobjects", value)
     Convars.SetValue("tf_fastbuild", value)
+}
 
-    if (inSetup)
-    {
-        // For the one person that will change the ConVar...
-        local original = Convars.GetInt("tf_obj_upgrade_per_hit")
-        setupUpgradePerHit = (original == null || original == SETUP_UPGRADE_PER_HIT) ? 25 : original
-        Convars.SetValue("tf_obj_upgrade_per_hit", SETUP_UPGRADE_PER_HIT)
-    }
-    else
-    {
-        Convars.SetValue("tf_obj_upgrade_per_hit", setupUpgradePerHit)
-    }
+function OnGameEvent_player_builtobject(params)
+{
+    if (!setupActive || params.object == OBJECT_TYPE_SAPPER)
+        return
+
+    local building = EntIndexToHScript(params.index)
+    if (building == null || !building.IsValid())
+        return
+
+    // Bring back the Level 3 Mini-Sentry bug...it's been so long...
+    if (NetProps.HasProp(building, "m_bMiniBuilding") && NetProps.GetPropBool(building, "m_bMiniBuilding"))
+        return
+
+    local hasLevel = NetProps.HasProp(building, "m_iUpgradeLevel")
+    if (DEBUG && hasLevel)
+        printl("building level before: " + NetProps.GetPropInt(building, "m_iUpgradeLevel"))
+
+    NetProps.SetPropInt(building, "m_nDefaultUpgradeLevel", SETUP_BUILDING_LEVEL - 1)
+    building.AcceptInput("Enable", "", null, null)
+
+    if (DEBUG && hasLevel)
+        printl("building level after: " + NetProps.GetPropInt(building, "m_iUpgradeLevel"))
 }
 
 // Ugly hack to avoid people being able to buy a canteen charge, use
