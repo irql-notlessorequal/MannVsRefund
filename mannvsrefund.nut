@@ -24,6 +24,7 @@ const HUD_PRINTTALK = 3
 const DEBUG = false // Set to true to print round info to the server console
 const MONEY_VANISH_SOUND = "mvm/mvm_money_vanish.wav"
 const FLAG_EVENT_CAPTURE = 2
+const SOLID_BBOX = 2
 const WIPE_BATCH_COUNT = 2
 const SETUP_BUILDING_LEVEL = 3
 const OBJECT_TYPE_SAPPER = 3
@@ -104,6 +105,7 @@ slowWorkTime <- 0.0 // When the setup and canteen checks next run
 roundRunning <- false // True while the round is live, which is when respawn waves run
 arenaMode <- false // Arena has no respawn waves, so there's no buy-back there
 setupActive <- false // True when we are in pre-round setup
+setupUpgrades <- false // Did we place the upgrade station entities?
 teamKills <- {}  // Kills per team this round, used for steamroll detection
 teamKills[TEAM_RED] <- 0
 teamKills[TEAM_BLU] <- 0
@@ -136,9 +138,8 @@ function OnGameEvent_teamplay_round_start(params)
 
     ClearReviveMarkers()
     ForceEnableUpgrades(2)
-    ClearUpgradeStations()
     ResetCanteens()
-    SpawnUpgradeZonesAtResupply()
+    EnsureUpgradeZonesAtResupply()
 
     PrecacheUpgradeSounds()
 
@@ -449,23 +450,26 @@ function SpawnReviveMarker(victim)
 }
 
 // Spawns an upgrade zone over every resupply locker trigger on the map
-function SpawnUpgradeZonesAtResupply()
+function EnsureUpgradeZonesAtResupply()
 {
-    local ent = null
-    while (ent = Entities.FindByClassname(ent, "func_regenerate"))
+    if (!setupUpgrades)
     {
-        local mins = ent.GetBoundingMins()
-        local maxs = ent.GetBoundingMaxs()
-
-        local brush = SpawnEntityFromTable("func_upgradestation",
+        local ent = null
+        while (ent = Entities.FindByClassname(ent, "func_regenerate"))
         {
-            targetname  = "vscript_upgrade_station",
-            origin      = ent.GetOrigin()
-        })
+            local mins = ent.GetBoundingMins()
+            local maxs = ent.GetBoundingMaxs()
 
-        brush.KeyValueFromInt("solid", 2)
-        brush.KeyValueFromString("mins", mins.x.tostring() + " " + mins.y.tostring() + " " + mins.z.tostring())
-        brush.KeyValueFromString("maxs", maxs.x.tostring() + " " + maxs.y.tostring() + " " + maxs.z.tostring())
+            local brush = SpawnEntityFromTable("func_upgradestation",
+            {
+                targetname  = "vscript_upgrade_station",
+                origin      = ent.GetOrigin()
+            })
+
+            brush.KeyValueFromInt("solid", SOLID_BBOX)
+            brush.SetSize(mins, maxs)
+        }
+        setupUpgrades = true
     }
 }
 
