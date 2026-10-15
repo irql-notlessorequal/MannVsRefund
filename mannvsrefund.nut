@@ -24,6 +24,7 @@ const HUD_PRINTTALK = 3
 const DEBUG = false // Set to true to print round info to the server console
 const MONEY_VANISH_SOUND = "mvm/mvm_money_vanish.wav"
 const FLAG_EVENT_CAPTURE = 2
+const WIPE_BATCH_COUNT = 2
 const SETUP_BUILDING_LEVEL = 3
 const OBJECT_TYPE_SAPPER = 3
 const NUM_CLASSES = 9
@@ -89,6 +90,7 @@ function PrecacheUpgradeSounds()
 }
 PrecacheUpgradeSounds()
 
+resetQueue <- [] // Queue for clients that need their upgrades to be reset.
 hasRecievedCash <- {}
 deathStreak <- {}
 earnedCash <- {} // Total currency each player has received this round
@@ -212,7 +214,10 @@ function OnGameEvent_player_spawn(params)
 
     if (!hasRecievedCash[client.entindex()])
     {
-        RemoveUpgradesFromAllClasses(client, client.GetMaxHealth())
+        // We need to defer the upgrade reset on high-edict scenarios...
+        if (resetQueue.find(client.entindex()) == null)
+            resetQueue.append(client.entindex())
+
         client.SetCurrency(START_CASH)
         earnedCash[client.entindex()] = START_CASH
         hasRecievedCash[client.entindex()] = true
@@ -283,6 +288,29 @@ function ResetPlayers()
         hasRecievedCash[i] = false
         deathStreak[i] = 0
         earnedCash[i] = 0
+    }
+}
+
+// Wipes a batch of player's upgrades, we need to do this otherwise
+// we can accidentally spike the edict count past the limit, crashing
+// the server in the process.
+//
+// *ahem* Cowerhouse *ahem* Hacksaw *ahem* 40-player Dustbowl
+function ProcessPendingWipes(maxPerTick)
+{
+    local done = 0
+    while (resetQueue.len() > 0 && done < maxPerTick)
+    {
+        local idx = resetQueue.remove(0)
+        local client = PlayerInstanceFromIndex(idx)
+        if (client == null || !client.IsValid())
+            continue
+        // Player may have disconnected and another client reused the slot;
+        // only wipe if this slot already got its start cash this round.
+        if (!hasRecievedCash[idx])
+            continue
+        RemoveUpgradesFromAllClasses(client, client.GetMaxHealth())
+        done++
     }
 }
 
@@ -840,6 +868,7 @@ function OnWorldSpawnThink()
     if (now >= slowWorkTime)
     {
         slowWorkTime = now + SLOW_WORK_INTERVAL
+        ProcessPendingWipes(WIPE_BATCH_COUNT)
         UpdateBuildingsDuringSetup()
         WatchCanteenPurchases()
     }
