@@ -323,11 +323,13 @@ function ResetCanteens()
 
 function ClearUpgradeStations()
 {
+    local found = []
     local ent = null
     while (ent = Entities.FindByName(ent, "vscript_upgrade_station"))
-    {
-        ent.Kill()
-    }
+        found.append(ent)
+    foreach (e in found)
+        if (e != null && e.IsValid())
+            e.Kill()
 }
 
 // Gives every other player on the killer's team a share of the kill credit
@@ -381,11 +383,13 @@ function RemoveReviveMarker(client)
 
 function ClearReviveMarkers()
 {
+    local found = []
     local ent = null
     while (ent = Entities.FindByClassname(ent, "entity_revive_marker"))
-    {
-        ent.Kill()
-    }
+        found.append(ent)
+    foreach (e in found)
+        if (e != null && e.IsValid())
+            e.Kill()
 
     for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
         reviveMarkers[i] = null
