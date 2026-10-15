@@ -269,15 +269,23 @@ function OnGameEvent_player_say(params)
     }
 }
 
+function ResetPlayerData(idx)
+{
+    hasRecievedCash[idx] = false
+    deathStreak[idx] = 0
+    earnedCash[idx] = 0
+    moneySoundTime[idx] = 0.0
+    canteenWatch[idx] = { charges = 0, currency = 0 }
+    ResetBuybackState(idx)
+}
+
 function OnGameEvent_player_disconnect(params)
 {
     local client = GetPlayerFromUserID(params.userid)
     if (client != null && client.IsValid())
     {
-        hasRecievedCash[client.entindex()] = false
-        deathStreak[client.entindex()] = 0
-        earnedCash[client.entindex()] = 0
-        ResetBuybackState(client.entindex())
+        RemoveReviveMarker(client)
+        ResetPlayerData(client.entindex())
     }
 }
 
@@ -285,9 +293,7 @@ function ResetPlayers()
 {
     for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
     {
-        hasRecievedCash[i] = false
-        deathStreak[i] = 0
-        earnedCash[i] = 0
+        ResetPlayerData(i)
     }
 }
 
