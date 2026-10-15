@@ -123,8 +123,11 @@ function OnGameEvent_teamplay_round_start(params)
 
     teamKills[TEAM_RED] = 0
     teamKills[TEAM_BLU] = 0
-
     roundRunning = false
+
+    if (IsWaitingForPlayers())
+        return
+
     arenaMode = IsArenaMode()
     for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
         ResetBuybackState(i)
