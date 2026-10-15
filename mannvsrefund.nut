@@ -952,7 +952,7 @@ function OnGameEvent_player_death(params)
                 teamKills[attackerTeam] += 1
 
             AddCurrency(attacker, KILL_CASH)
-            if (!IsArenaMode())
+            if (!arenaMode)
                 ShareKillCurrency(attacker, KILL_CASH)
             deathStreak[attacker.entindex()] = 0
             deathStreak[victim.entindex()] += 1
