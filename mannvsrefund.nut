@@ -97,7 +97,6 @@ deathStreak <- {}
 earnedCash <- {} // Total currency each player has received this round
 reviveMarkers <- {} // Each player's current revive marker entity, if any
 buybackState <- {} // Each player's buy-back tracking (time of death and current cost)
-buybackDead <- {} // Players currently tracked as dead, so the think doesn't scan everyone
 moneySoundTime <- {} // When each player last heard the pickup sound
 canteenWatch <- {} // Each player's last seen canteen charges and money
 waveCache <- { time = -100.0, rules = null, delay = 0.0, scaled = {}, unscaled = {} } // Wave lengths are expensive
@@ -579,10 +578,9 @@ function RemoveBuybackHud(client, state)
 
 function ClearBuybackHuds()
 {
-    foreach (idx, tracked in buybackDead)
+    foreach (idx, state in buybackState)
     {
-        local state = buybackState[idx]
-        if (state.hud != null)
+        if (state.hud != null && state.deathTime >= 0.0)
             RemoveBuybackHud(PlayerInstanceFromIndex(idx), state)
     }
 }
@@ -591,8 +589,6 @@ function ResetBuybackState(idx)
 {
     local state = buybackState[idx]
     RemoveBuybackHud(PlayerInstanceFromIndex(idx), state)
-    if (idx in buybackDead)
-        delete buybackDead[idx]
 
     state.deathTime = -1.0
     state.window = -1.0
@@ -608,7 +604,6 @@ function StartBuybackTracking(victim)
     local idx = victim.entindex()
     ResetBuybackState(idx)
     buybackState[idx].deathTime = Time()
-    buybackDead[idx] <- true
 }
 
 function GetConvarFloat(name, fallback)
@@ -888,8 +883,11 @@ function OnWorldSpawnThink()
 
     // The dead players being tracked. This is copied.
     local dead = []
-    foreach (idx, tracked in buybackDead)
-        dead.append(idx)
+    foreach (idx, state in buybackState)
+    {
+        if (state.deathTime >= 0.0)
+            dead.append(idx)
+    }
 
     if (dead.len() == 0)
         return BUYBACK_IDLE_INTERVAL
