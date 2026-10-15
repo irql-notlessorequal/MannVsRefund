@@ -369,6 +369,7 @@ function ShareKillCurrency(killer, cash)
 {
     local share = (cash * TEAM_KILL_SHARE + 0.5).tointeger()
     local team = killer.GetTeam()
+    local steamrolled = GetSteamrolledTeam()
 
     for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
     {
@@ -377,7 +378,7 @@ function ShareKillCurrency(killer, cash)
             continue
 
         if (player.GetTeam() == team)
-            AddCurrency(player, share)
+            AddCurrency(player, share, steamrolled)
     }
 }
 
@@ -504,10 +505,12 @@ function PlayMoneySound(client)
     })
 }
 
-function AddCurrency(client, cash)
+function AddCurrency(client, cash, steamrolled = -2)
 {
     // The losing team of a steamroll earns extra
-    if (client.GetTeam() == GetSteamrolledTeam())
+    if (steamrolled == -2)
+        steamrolled = GetSteamrolledTeam()
+    if (client.GetTeam() == steamrolled)
         cash = (cash * STEAMROLL_BONUS + 0.5).tointeger()
 
     client.SetCurrency(client.GetCurrency() + cash)
