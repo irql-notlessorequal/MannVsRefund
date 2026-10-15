@@ -873,12 +873,17 @@ function WatchCanteenPurchases()
 function OnWorldSpawnThink()
 {
     local now = Time()
+    local waiting = IsWaitingForPlayers()
     if (now >= slowWorkTime)
     {
         slowWorkTime = now + SLOW_WORK_INTERVAL
-        ProcessPendingWipes(WIPE_BATCH_COUNT)
-        UpdateBuildingsDuringSetup()
-        WatchCanteenPurchases()
+        // But nobody came.
+        if (!waiting)
+        {
+            ProcessPendingWipes(WIPE_BATCH_COUNT)
+            UpdateBuildingsDuringSetup()
+            WatchCanteenPurchases()
+        }
     }
 
     if (!roundRunning || arenaMode)
