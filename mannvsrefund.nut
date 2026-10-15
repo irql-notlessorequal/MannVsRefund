@@ -28,6 +28,10 @@ const NUM_CLASSES = 9
 const UPGRADE_VO_COUNT = 11
 const FLAG_DEAD_RINGER = 32
 
+// I'm not sure if we can force a building to Level 3 through VScript,
+// this is closest compromise that I could come up with...
+const SETUP_UPGRADE_PER_HIT = 200
+
 // Currency amounts
 const START_CASH = 500
 const KILL_CASH = 100
@@ -78,6 +82,8 @@ reviveMarkers <- {} // Each player's current revive marker entity, if any
 buybackState <- {} // Each player's buy-back tracking (time of death and current cost)
 roundRunning <- false // True while the round is live, which is when respawn waves run
 arenaMode <- false // Arena has no respawn waves, so there's no buy-back there
+setupActive <- false // True when we are in pre-round setup
+setupUpgradePerHit <- 25 // We're just mirroring tf_obj_upgrade_per_hit lol
 teamKills <- {}  // Kills per team this round, used for steamroll detection
 teamKills[TEAM_RED] <- 0
 teamKills[TEAM_BLU] <- 0
@@ -666,9 +672,39 @@ function TryBuyback(client, price, state)
     BroadcastTeamColoredMessage(client, format("has \x05bought back\x01 into the game for %d credits!", price))
 }
 
-// Runs on worldspawn's think.
-function BuybackThink()
+// MvM makes buildings free to build and upgrade between waves, we do it at setup time.
+function UpdateBuildingsDuringSetup()
 {
+    local rules = Entities.FindByClassname(null, "tf_gamerules")
+    local inSetup = !arenaMode && rules != null && NetProps.GetPropBool(rules, "m_bInSetup")
+    if (inSetup == setupActive)
+        return
+
+    setupActive = inSetup
+
+    // tf_cheapobjects and tf_fastbuild default to 0, so that's what they go back to
+    local value = inSetup ? 1 : 0
+    Convars.SetValue("tf_cheapobjects", value)
+    Convars.SetValue("tf_fastbuild", value)
+
+    if (inSetup)
+    {
+        // For the one person that will change the ConVar...
+        local original = Convars.GetInt("tf_obj_upgrade_per_hit")
+        setupUpgradePerHit = (original == null || original == SETUP_UPGRADE_PER_HIT) ? 25 : original
+        Convars.SetValue("tf_obj_upgrade_per_hit", SETUP_UPGRADE_PER_HIT)
+    }
+    else
+    {
+        Convars.SetValue("tf_obj_upgrade_per_hit", setupUpgradePerHit)
+    }
+}
+
+// Runs on worldspawn's think.
+function OnWorldSpawnThink()
+{
+    UpdateBuildingsDuringSetup()
+
     if (!roundRunning || arenaMode)
     {
         ClearBuybackHuds()
@@ -821,11 +857,14 @@ function OnGameEvent_teamplay_flag_event(params)
     }
 }
 
+// We actually need to check for this every round now.
+arenaMode = IsArenaMode()
+
 // worldspawn is never removed, so a think on it runs for the whole map.
 // bindenv keeps the script's own functions and variables visible inside the think.
 local world = Entities.FindByClassname(null, "worldspawn")
 world.ValidateScriptScope()
-world.GetScriptScope().BuybackThink <- BuybackThink.bindenv(this)
-AddThinkToEnt(world, "BuybackThink")
+world.GetScriptScope().OnWorldSpawnThink <- OnWorldSpawnThink.bindenv(this)
+AddThinkToEnt(world, "OnWorldSpawnThink")
 
 __CollectGameEventCallbacks(this)
