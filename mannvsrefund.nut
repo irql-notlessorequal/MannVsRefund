@@ -533,7 +533,7 @@ function IsWaitingForPlayers()
 
 function GetBuybackDelay()
 {
-    return 2.0 + GetConvarFloat("spec_freeze_traveltime", 0.4) + GetConvarFloat("spec_freeze_time", 4.0)
+    return 1.6 + GetConvarFloat("spec_freeze_traveltime", 0.4) + GetConvarFloat("spec_freeze_time", 4.0)
 }
 
 function ShowBuybackHud(client, state, text)
