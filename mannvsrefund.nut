@@ -32,6 +32,9 @@ const FLAG_DEAD_RINGER = 32
 // this is closest compromise that I could come up with...
 const SETUP_UPGRADE_PER_HIT = 200
 
+// I'm going to be a jerk and just assume your spending it all on Crit Canteens
+const CANTEEN_MAX_CHARGE_COST = 100
+
 // Currency amounts
 const START_CASH = 500
 const KILL_CASH = 100
@@ -64,11 +67,19 @@ const BUYBACK_PRICE_STEP = 20        // The price drops in steps of this much (k
 const BUYBACK_BUTTON = 8192          // IN_RELOAD
 const BUYBACK_HUD_CHANNEL = 2        // game_text channel (0-5) used for the buy-back text
 const BUYBACK_DENIED_SOUND = "replay/cameracontrolerror.wav"
+const BUYBACK_BOUGHT_IN_SOUND = "mvm/mvm_bought_in.wav"
+const BUYBACK_MIN_WINDOW = 5.0       // Buy-back must stay open at least this long to be offered at all (very short respawns skip it)
+
+// Sound for receiving money
+const MONEY_PICKUP_SOUND = "mvm/mvm_money_pickup.wav"
+const MONEY_PICKUP_COOLDOWN = 1.0    // Adjust this to avoid hearing "mvm/mvm_money_pickup.wav" constantly
 
 // MvM sounds aren't precached on non-MvM maps
 function PrecacheUpgradeSounds()
 {
     PrecacheSound(MONEY_VANISH_SOUND)
+    PrecacheSound(MONEY_PICKUP_SOUND)
+    PrecacheSound(BUYBACK_BOUGHT_IN_SOUND)
     PrecacheSound(BUYBACK_DENIED_SOUND)
     for (local i = 1; i <= UPGRADE_VO_COUNT; i++)
         PrecacheSound(format("vo/mvm_get_to_upgrade%02d.mp3", i))
@@ -80,6 +91,8 @@ deathStreak <- {}
 earnedCash <- {} // Total currency each player has received this round
 reviveMarkers <- {} // Each player's current revive marker entity, if any
 buybackState <- {} // Each player's buy-back tracking (time of death and current cost)
+moneySoundTime <- {} // When each player last heard the pickup sound
+canteenWatch <- {} // Each player's last seen canteen charges and money
 roundRunning <- false // True while the round is live, which is when respawn waves run
 arenaMode <- false // Arena has no respawn waves, so there's no buy-back there
 setupActive <- false // True when we are in pre-round setup
@@ -93,7 +106,9 @@ for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
     deathStreak[i] <- 0
     earnedCash[i] <- 0
     reviveMarkers[i] <- null
-    buybackState[i] <- { deathTime = -1.0, window = -1.0, held = false, nextHud = 0.0, estimate = -1.0, hud = null }
+    buybackState[i] <- { deathTime = -1.0, window = -1.0, held = false, nextHud = 0.0, estimate = -1.0, hud = null, skip = false }
+    moneySoundTime[i] <- 0.0
+    canteenWatch[i] <- { charges = 0, currency = 0 }
 }
 
 function OnGameEvent_teamplay_round_start(params)
@@ -429,6 +444,22 @@ function GetSteamrolledTeam()
     return -1
 }
 
+// Torments the player with that god-damned sound...
+function PlayMoneySound(client)
+{
+    local idx = client.entindex()
+    local now = Time()
+    if (now - moneySoundTime[idx] < MONEY_PICKUP_COOLDOWN)
+        return
+
+    moneySoundTime[idx] = now
+    EmitSoundEx({
+        sound_name  = MONEY_PICKUP_SOUND,
+        entity      = client,
+        filter_type = Constants.EScriptRecipientFilter.RECIPIENT_FILTER_SINGLE_PLAYER
+    })
+}
+
 function AddCurrency(client, cash)
 {
     // The losing team of a steamroll earns extra
@@ -437,6 +468,9 @@ function AddCurrency(client, cash)
 
     client.SetCurrency(client.GetCurrency() + cash)
     earnedCash[client.entindex()] += cash
+
+    if (cash > 0)
+        PlayMoneySound(client)
 }
 
 function IsWaitingForPlayers()
@@ -515,6 +549,7 @@ function ResetBuybackState(idx)
     state.held = false
     state.nextHud = 0.0
     state.estimate = -1.0
+    state.skip = false
 }
 
 function StartBuybackTracking(victim)
@@ -594,7 +629,7 @@ function GetRespawnTime(client)
 
     // The earliest a player may spawn: the death animation
     // and freeze panel, plus one full unscaled wave
-    local deathAnim = 2.0 + GetConvarFloat("spec_freeze_traveltime", 0.4) + GetConvarFloat("spec_freeze_time", 4.0)
+    local deathAnim = GetBuybackDelay()
     local earliest = state.deathTime + deathAnim + GetWaveLength(team, false)
 
     // Waves keep coming every waveLength; they spawn in the first one that is late enough
@@ -670,6 +705,11 @@ function TryBuyback(client, price, state)
     client.ForceRespawn()
 
     BroadcastTeamColoredMessage(client, format("has \x05bought back\x01 into the game for %d credits!", price))
+
+    EmitSoundEx({
+        sound_name  = BUYBACK_BOUGHT_IN_SOUND,
+        entity      = client
+    })
 }
 
 // MvM makes buildings free to build and upgrade between waves, we do it at setup time.
@@ -700,10 +740,62 @@ function UpdateBuildingsDuringSetup()
     }
 }
 
+// Ugly hack to avoid people being able to buy a canteen charge, use
+// some then immediately refund and get their full refund amount back.
+function WatchCanteenPurchases()
+{
+    local seen = {}
+
+    local bottle = null
+    while (bottle = Entities.FindByClassname(bottle, "tf_powerup_bottle"))
+    {
+        local owner = NetProps.GetPropEntity(bottle, "m_hOwnerEntity")
+        if (owner == null || !owner.IsPlayer())
+            continue
+
+        local idx = owner.entindex()
+        local watch = canteenWatch[idx]
+        local charges = NetProps.GetPropInt(bottle, "m_usNumCharges")
+        local bought = charges - watch.charges
+        if (bought > 0)
+        {
+            // Never count more than the charges could have cost,
+            // as other upgrades can be bought in the same moment
+            local spent = watch.currency - owner.GetCurrency()
+            local cap = bought * CANTEEN_MAX_CHARGE_COST
+            if (spent > cap)
+                spent = cap
+
+            if (spent > 0)
+            {
+                earnedCash[idx] -= spent
+                if (earnedCash[idx] < 0)
+                    earnedCash[idx] = 0
+            }
+        }
+
+        watch.charges = charges
+        seen[idx] <- true
+    }
+
+    for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
+    {
+        local player = PlayerInstanceFromIndex(i)
+        if (player == null)
+            continue
+
+        local watch = canteenWatch[i]
+        if (!(i in seen))
+            watch.charges = 0
+        watch.currency = player.GetCurrency()
+    }
+}
+
 // Runs on worldspawn's think.
 function OnWorldSpawnThink()
 {
     UpdateBuildingsDuringSetup()
+    WatchCanteenPurchases()
 
     if (!roundRunning || arenaMode)
     {
@@ -745,15 +837,22 @@ function OnWorldSpawnThink()
         if (now < opens)
             continue
 
+        // Is the buyback window worth opening to the player?
+        if (state.window < 0.0)
+        {
+            state.window = respawn - opens
+            if (state.window - BUYBACK_CUTOFF < BUYBACK_MIN_WINDOW)
+                state.skip = true
+        }
+
+        if (state.skip)
+            continue
+
         if (remaining - BUYBACK_CUTOFF <= 0.0)
         {
             RemoveBuybackHud(client, state)
             continue
         }
-
-        // Pin the price curve to how long this window turned out to be
-        if (state.window < 0.0)
-            state.window = respawn - opens
 
         local price = GetBuybackPrice(state.window, remaining)
         if (pressed)
