@@ -40,8 +40,6 @@ const START_CASH = 500
 const KILL_CASH = 100
 const ASSIST_CASH = 50
 const MEDIC_ASSIST_CASH = 100
-const DEATH_STREAK_CASH = 100
-const DEATH_STREAK_THRESHOLD = 3     // Consecutive deaths needed for the bonus
 const POINT_CAPTURE_CASH = 100       // Whole team, on top of the game's own cap bonus
 const FLAG_CAPTURE_CASH = 300        // Player who captured the flag
 const FLAG_CAPTURE_TEAM_CASH = 200   // Rest of the capturer's team
@@ -93,7 +91,6 @@ PrecacheUpgradeSounds()
 
 resetQueue <- [] // Queue for clients that need their upgrades to be reset.
 hasRecievedCash <- {}
-deathStreak <- {}
 earnedCash <- {} // Total currency each player has received this round
 reviveMarkers <- {} // Each player's current revive marker entity, if any
 buybackState <- {} // Each player's buy-back tracking (time of death and current cost)
@@ -111,7 +108,6 @@ teamKills[TEAM_BLU] <- 0
 for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
 {
     hasRecievedCash[i] <- false
-    deathStreak[i] <- 0
     earnedCash[i] <- 0
     reviveMarkers[i] <- null
     buybackState[i] <- { deathTime = -1.0, window = -1.0, held = false, nextHud = 0.0, estimate = -1.0, hud = null, skip = false, opened = false }
@@ -223,12 +219,6 @@ function OnGameEvent_player_spawn(params)
         hasRecievedCash[client.entindex()] = true
     }
 
-    if (deathStreak[client.entindex()] >= DEATH_STREAK_THRESHOLD)
-    {
-        AddCurrency(client, DEATH_STREAK_CASH)
-        deathStreak[client.entindex()] = 0
-    }
-
     if (!IsWaitingForPlayers())
         ClientPrint(client, HUD_PRINTTALK, REFUND_HINT)
 }
@@ -272,7 +262,6 @@ function OnGameEvent_player_say(params)
 function ResetPlayerData(idx)
 {
     hasRecievedCash[idx] = false
-    deathStreak[idx] = 0
     earnedCash[idx] = 0
     moneySoundTime[idx] = 0.0
     canteenWatch[idx] = { charges = 0, currency = 0 }
@@ -1006,8 +995,6 @@ function OnGameEvent_player_death(params)
             AddCurrency(attacker, KILL_CASH)
             if (!arenaMode)
                 ShareKillCurrency(attacker, KILL_CASH)
-            deathStreak[attacker.entindex()] = 0
-            deathStreak[victim.entindex()] += 1
         }
     }
 
@@ -1018,7 +1005,6 @@ function OnGameEvent_player_death(params)
             if (assister.GetPlayerClass() == Constants.ETFClass.TF_CLASS_MEDIC)
             {
                 AddCurrency(assister, MEDIC_ASSIST_CASH)
-                deathStreak[assister.entindex()] = 0
             }
             else
             {
