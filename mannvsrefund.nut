@@ -294,17 +294,41 @@ function ResetPlayers()
 function ProcessPendingWipes(maxPerTick)
 {
     local done = 0
-    while (resetQueue.len() > 0 && done < maxPerTick)
+    local i = 0
+    while (i < resetQueue.len() && done < maxPerTick)
     {
-        local idx = resetQueue.remove(0)
+        local idx = resetQueue[i]
         local client = PlayerInstanceFromIndex(idx)
+
         if (client == null || !client.IsValid())
+        {
+            resetQueue.remove(i)
             continue
+        }
+
+        if (client.GetTeam() < 2)
+        {
+            resetQueue.remove(i)
+            continue
+        }
+
         // Player may have disconnected and another client reused the slot;
         // only wipe if this slot already got its start cash this round.
         if (!hasRecievedCash[idx])
+        {
+            resetQueue.remove(i)
             continue
+        }
+
+        // Wiping cycles through classes and regenerates, so wait until they're alive again
+        if (NetProps.GetPropInt(client, "m_lifeState") != 0)
+        {
+            i++
+            continue
+        }
+
         RemoveUpgradesFromAllClasses(client, client.GetMaxHealth())
+        resetQueue.remove(i)
         done++
     }
 }
