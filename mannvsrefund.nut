@@ -211,8 +211,7 @@ function OnGameEvent_player_spawn(params)
     if (!hasRecievedCash[client.entindex()])
     {
         // We need to defer the upgrade reset on high-edict scenarios...
-        if (resetQueue.find(client.entindex()) == null)
-            resetQueue.append(client.entindex())
+        EnqueueWipe(client.entindex())
 
         client.SetCurrency(START_CASH)
         earnedCash[client.entindex()] = START_CASH
@@ -275,6 +274,11 @@ function OnGameEvent_player_disconnect(params)
     {
         RemoveReviveMarker(client)
         ResetPlayerData(client.entindex())
+
+        // We shouldn't reset players that are gone...
+        local gone = resetQueue.find(client.entindex())
+        if (gone != null)
+            resetQueue.remove(gone)
     }
 }
 
@@ -284,6 +288,47 @@ function ResetPlayers()
     {
         ResetPlayerData(i)
     }
+}
+
+function OnGameEvent_player_team(params)
+{
+    if (params.disconnect)
+        return
+
+    if (params.team == params.oldteam)
+        return
+
+    // Only skip if the player came from spectator mode.
+    if (params.team < 2)
+        return
+
+    local client = GetPlayerFromUserID(params.userid)
+    if (client == null || !client.IsValid())
+        return
+
+    local idx = client.GetEntityIndex()
+    // I love autobalance!
+    RemoveReviveMarker(client)
+
+    canteenWatch[idx] <- { charges = 0, currency = 0 }
+
+    // Nuh-uh.
+    if (idx in buybackState)
+    {
+        RemoveBuybackHud(client, buybackState[idx])
+        ResetBuybackState(idx)
+    }
+
+    // Give the player an average of what their team has,
+    // if their team has literally nothing, just give them
+    // the default starting amount of cash.
+    local avg = GetTeamAverageCash(params.team)
+    if (avg == null)
+        avg = START_CASH
+
+    client.SetCurrency(avg)
+    earnedCash[idx] = avg
+    EnqueueWipe(idx)
 }
 
 // Wipes a batch of player's upgrades, we need to do this otherwise
@@ -331,6 +376,35 @@ function ProcessPendingWipes(maxPerTick)
         resetQueue.remove(i)
         done++
     }
+}
+
+function EnqueueWipe(idx)
+{
+    if (resetQueue.find(idx) == null)
+        resetQueue.append(idx)
+}
+
+// Floor-average spendable cash from the current team
+// This excludes money spent on buybacks or canteen spam
+function GetTeamAverageCash(team)
+{
+    local total = 0
+    local count = 0
+    for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
+    {
+        local client = PlayerInstanceFromIndex(i)
+        if (client == null || !client.IsValid())
+            continue
+        if (client.GetTeam() != team)
+            continue
+        if (!(i in earnedCash))
+            continue
+        total += earnedCash[i]
+        count++
+    }
+    if (count == 0)
+        return null
+    return total / count
 }
 
 function RemoveUpgradesFromAllClasses(client, health = null)
