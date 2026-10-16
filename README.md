@@ -8,7 +8,8 @@ Turn any map into MvM with upgrades!
 
 # License
 
-Licensed under the GNU Affero General Public License v3.
+The public version of this script, meaning this repository,
+is licensed under the GNU Affero General Public License v3.
 
 ```
 MannVsRefund, a modified version of Lazyneer's MvM upgrades
