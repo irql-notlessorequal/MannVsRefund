@@ -32,6 +32,10 @@ const NUM_CLASSES = 9
 const UPGRADE_VO_COUNT = 11
 const FLAG_DEAD_RINGER = 32
 
+// This requires the custom model in the assets folder.
+const USE_TEAMCOLOR_TOMBSTONE = true
+const TEAMCOLOR_TOMBSTONE_MODEL = "models/props_mvm/mvm_revive_tombstone_teamcolor.mdl"
+
 // I'm going to be a jerk and just assume your spending it all on Crit Canteens
 const CANTEEN_MAX_CHARGE_COST = 100
 
@@ -78,7 +82,7 @@ const MONEY_PICKUP_SOUND = "mvm/mvm_money_pickup.wav"
 const MONEY_PICKUP_COOLDOWN = 1.0    // Adjust this to avoid hearing "mvm/mvm_money_pickup.wav" constantly
 
 // MvM sounds aren't precached on non-MvM maps
-function PrecacheUpgradeSounds()
+function PrecacheAssets()
 {
     PrecacheSound(MONEY_VANISH_SOUND)
     PrecacheSound(MONEY_PICKUP_SOUND)
@@ -86,8 +90,11 @@ function PrecacheUpgradeSounds()
     PrecacheSound(BUYBACK_DENIED_SOUND)
     for (local i = 1; i <= UPGRADE_VO_COUNT; i++)
         PrecacheSound(format("vo/mvm_get_to_upgrade%02d.mp3", i))
+
+    if (USE_TEAMCOLOR_TOMBSTONE)
+        PrecacheModel(TEAMCOLOR_TOMBSTONE_MODEL)
 }
-PrecacheUpgradeSounds()
+PrecacheAssets()
 
 resetQueue <- [] // Queue for clients that need their upgrades to be reset.
 hasRecievedCash <- {}
@@ -136,7 +143,7 @@ function OnGameEvent_teamplay_round_start(params)
     ResetCanteens()
     EnsureUpgradeZonesAtResupply()
 
-    PrecacheUpgradeSounds()
+    PrecacheAssets()
 
     ClientPrint(null, HUD_PRINTTALK, CREDITS_MESSAGE)
 
@@ -527,18 +534,26 @@ function SpawnReviveMarker(victim)
     RemoveReviveMarker(victim)
 
     local ang = victim.GetAbsAngles()
-    local marker = SpawnEntityFromTable("entity_revive_marker",
+    local spawnTable =
     {
         origin  = victim.GetOrigin() + Vector(0, 0, 50),
         angles  = Vector(0, ang.y, 0)
-    })
+    }
 
+    local marker = SpawnEntityFromTable("entity_revive_marker", spawnTable)
     if (marker == null)
         return
 
     NetProps.SetPropEntity(marker, "m_hOwner", victim)
     marker.SetTeam(victim.GetTeam())
     marker.SetBodygroup(1, victim.GetPlayerClass() - 1)
+
+    if (USE_TEAMCOLOR_TOMBSTONE)
+    {
+        NetProps.SetPropInt(marker, "m_nModelIndex", PrecacheModel(TEAMCOLOR_TOMBSTONE_MODEL))
+        marker.SetSkin(victim.GetTeam() == TEAM_BLU ? 1 : 0)
+    }
+
     reviveMarkers[victim.entindex()] = marker
 }
 
