@@ -1129,6 +1129,9 @@ function OnGameEvent_player_death(params)
 
 function OnGameEvent_teamplay_point_captured(params)
 {
+    if (!roundRunning)
+        return
+
     for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
     {
         local client = PlayerInstanceFromIndex(i)
@@ -1144,6 +1147,9 @@ function OnGameEvent_teamplay_point_captured(params)
 
 function OnGameEvent_teamplay_flag_event(params)
 {
+    if (!roundRunning)
+        return
+
     // Captured..
     if (params.eventtype == FLAG_EVENT_CAPTURE)
     {
