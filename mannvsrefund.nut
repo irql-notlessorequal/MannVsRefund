@@ -244,6 +244,9 @@ function OnGameEvent_player_say(params)
             // locker and keep some of their upgrades for free...
             RemoveUpgradesFromAllClasses(client)
 
+            // Reset all canteens.
+            ResetCanteens()
+
             // The refund flag removes upgrades but doesn't return the money,
             // so restore the player's total earnings for this round
             local earned = earnedCash[client.entindex()]
