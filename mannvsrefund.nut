@@ -17,7 +17,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 const CREDITS_MESSAGE = "\x01Mann versus Refund. Created by \x079E2A2Brake\x01."
-const REFUND_PROMPT = "Press RELOAD to reset your current upgrades."
+const REFUND_PROMPT = "Hold RELOAD to reset your current upgrades."
 const HUD_PRINTTALK = 3
 const DEBUG = false // Set to true to print round info to the server console
 const MONEY_VANISH_SOUND = "mvm/mvm_money_vanish.wav"
