@@ -1085,7 +1085,8 @@ function CheckRefundButtons(now)
 
         if (now >= state.nextHud)
         {
-            ShowHudText(client, state, "vscript_refund_hud", REFUND_PROMPT, REFUND_HUD_CHANNEL, BUYBACK_HUD_INTERVAL + 0.25, 0.1)
+            ShowHudText(client, state, "vscript_refund_hud",
+                        REFUND_PROMPT, REFUND_HUD_CHANNEL, BUYBACK_HUD_INTERVAL + 0.25, 0.135)
             state.nextHud = now + BUYBACK_HUD_INTERVAL
         }
     }
@@ -1198,7 +1199,7 @@ function OnWorldSpawnThink()
         {
             ShowHudText(client, state, "vscript_buyback_hud", 
                         format("Press RELOAD to buy back into the game for $%d", price),
-                        BUYBACK_HUD_CHANNEL, BUYBACK_HUD_INTERVAL + 0.25, 0.7)
+                        BUYBACK_HUD_CHANNEL, BUYBACK_HUD_INTERVAL + 0.25, 0.65)
             state.nextHud = now + BUYBACK_HUD_INTERVAL
         }
     }
