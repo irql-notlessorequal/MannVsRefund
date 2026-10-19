@@ -16,10 +16,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-const CREDITS_MESSAGE = "MannVsRefund by rake.\nBased on the MvM Upgrades script by Lazyneer."
-const REFUND_OK = "\x05Upgrades reset, your money has been refunded.\x01"
-const REFUND_HINT = "Type /refund or !refund in chat to reset your upgrades."
-const REFUND_FAIL = "\x07AA0000You can only refund at a resupply locker.\x01"
+const CREDITS_MESSAGE = "\x01Mann versus Refund. Created by \x079E2A2Brake\x01."
+const REFUND_PROMPT = "Press RELOAD to reset your current upgrades."
 const HUD_PRINTTALK = 3
 const DEBUG = false // Set to true to print round info to the server console
 const MONEY_VANISH_SOUND = "mvm/mvm_money_vanish.wav"
@@ -68,10 +66,13 @@ const BUYBACK_IDLE_INTERVAL = 0.25   // Think rate when nobody is dead
 const BUYBACK_HUD_INTERVAL = 1.0     // How often the HUD text is refreshed
 const BUYBACK_PRICE_STEP = 10        // The price drops in steps of this much (keep the min and max costs a multiple of it)
 const BUYBACK_BUTTON = 8192          // IN_RELOAD
-const BUYBACK_HUD_CHANNEL = 2        // game_text channel (0-5) used for the buy-back text
 const BUYBACK_DENIED_SOUND = "replay/cameracontrolerror.wav"
 const BUYBACK_BOUGHT_IN_SOUND = "mvm/mvm_bought_in.wav"
 const BUYBACK_MIN_WINDOW = 5.0       // Buy-back must stay open at least this long to be offered at all (very short respawns skip it)
+
+// hud text channels
+const BUYBACK_HUD_CHANNEL = 1
+const REFUND_HUD_CHANNEL = 2
 
 // performance duct tape
 const SLOW_WORK_INTERVAL = 0.25      // How often setup and canteen checks run
@@ -101,6 +102,7 @@ hasRecievedCash <- {}
 earnedCash <- {} // Total currency each player has received this round
 reviveMarkers <- {} // Each player's current revive marker entity, if any
 buybackState <- {} // Each player's buy-back tracking (time of death and current cost)
+refundState <- {} // Each player's tracking of their resupply locker visit.
 moneySoundTime <- {} // When each player last heard the pickup sound
 canteenWatch <- {} // Each player's last seen canteen charges and money
 waveCache <- { time = -100.0, rules = null, delay = 0.0, scaled = {}, unscaled = {} } // Wave lengths are expensive
@@ -117,6 +119,7 @@ for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
     hasRecievedCash[i] <- false
     earnedCash[i] <- 0
     reviveMarkers[i] <- null
+    refundState[i] <- { hud = null, held = false, opened = false, nextHud = 0.0 }
     buybackState[i] <- { deathTime = -1.0, window = -1.0, held = false, nextHud = 0.0, estimate = -1.0, hud = null, skip = false, opened = false }
     moneySoundTime[i] <- 0.0
     canteenWatch[i] <- { charges = 0, currency = 0 }
@@ -224,48 +227,31 @@ function OnGameEvent_player_spawn(params)
         earnedCash[client.entindex()] = START_CASH
         hasRecievedCash[client.entindex()] = true
     }
-
-    if (!IsWaitingForPlayers())
-        ClientPrint(client, HUD_PRINTTALK, REFUND_HINT)
 }
 
-function OnGameEvent_player_say(params)
+function DoRefund(client)
 {
-    local client = GetPlayerFromUserID(params.userid)
-    if (client == null)
-        return
+    // A player could just switch loadout at the resupply
+    // locker and keep some of their upgrades for free...
+    RemoveUpgradesFromAllClasses(client)
 
-    local text = params.text.tolower()
-    if (text == "/refund" || text == "!refund")
-    {
-        if (NetProps.GetPropBool(client, "m_Shared.m_bInUpgradeZone"))
-        {
-            // A player could just switch loadout at the resupply
-            // locker and keep some of their upgrades for free...
-            RemoveUpgradesFromAllClasses(client)
+    // Reset all canteens.
+    ResetCanteens()
 
-            // Reset all canteens.
-            ResetCanteens()
+    // The refund flag removes upgrades but doesn't return the money,
+    // so restore the player's total earnings for this round
+    local earned = earnedCash[client.entindex()]
+    if (earned > client.GetCurrency())
+        client.SetCurrency(earned)
 
-            // The refund flag removes upgrades but doesn't return the money,
-            // so restore the player's total earnings for this round
-            local earned = earnedCash[client.entindex()]
-            if (earned > client.GetCurrency())
-                client.SetCurrency(earned)
+    EmitSoundEx({
+        sound_name  = MONEY_VANISH_SOUND,
+        entity      = client,
+        filter_type = Constants.EScriptRecipientFilter.RECIPIENT_FILTER_SINGLE_PLAYER
+    })
 
-            EmitSoundEx({
-                sound_name  = MONEY_VANISH_SOUND,
-                entity      = client,
-                filter_type = Constants.EScriptRecipientFilter.RECIPIENT_FILTER_SINGLE_PLAYER
-            })
-
-            ClientPrint(client, HUD_PRINTTALK, REFUND_OK)
-        }
-        else
-        {
-            ClientPrint(client, HUD_PRINTTALK, REFUND_FAIL)
-        }
-    }
+    // Respawn the player
+    client.ForceRespawn()
 }
 
 function ResetPlayerData(idx)
@@ -274,6 +260,7 @@ function ResetPlayerData(idx)
     earnedCash[idx] = 0
     moneySoundTime[idx] = 0.0
     canteenWatch[idx] = { charges = 0, currency = 0 }
+    ResetRefundState(idx)
     ResetBuybackState(idx)
 }
 
@@ -325,9 +312,11 @@ function OnGameEvent_player_team(params)
     // Nuh-uh.
     if (idx in buybackState)
     {
-        RemoveBuybackHud(client, buybackState[idx])
+        HideHudText(client, buybackState[idx])
         ResetBuybackState(idx)
     }
+
+    ResetRefundState(idx)
 
     // Give the player an average of what their team has,
     // if their team has literally nothing, just give them
@@ -641,23 +630,23 @@ function GetBuybackDelay()
     return 2.0 + GetConvarFloat("spec_freeze_traveltime", 0.4) + GetConvarFloat("spec_freeze_time", 4.0)
 }
 
-function ShowBuybackHud(client, state, text)
+function ShowHudText(client, state, targetname, text, channel, holdtime, ypos)
 {
     if (state.hud == null || !state.hud.IsValid())
     {
         state.hud = SpawnEntityFromTable("game_text",
         {
-            targetname  = "vscript_buyback_hud",
+            targetname  = targetname,
             message     = text,
             x           = -1,
-            y           = 0.7,
+            y           = ypos,
             effect      = 0,
             color       = "255 255 255",
             color2      = "255 255 255",
             fadein      = 0,
             fadeout     = 0,
-            holdtime    = BUYBACK_HUD_INTERVAL + 0.25,
-            channel     = BUYBACK_HUD_CHANNEL,
+            holdtime    = holdtime,
+            channel     = channel,
             spawnflags  = 0
         })
     }
@@ -666,7 +655,7 @@ function ShowBuybackHud(client, state, text)
     EntFireByHandle(state.hud, "Display", "", 0.0, client, client)
 }
 
-function RemoveBuybackHud(client, state)
+function HideHudText(client, state)
 {
     local hud = state.hud
     if (hud == null)
@@ -692,14 +681,14 @@ function ClearBuybackHuds()
     foreach (idx, state in buybackState)
     {
         if (state.hud != null && state.deathTime >= 0.0)
-            RemoveBuybackHud(PlayerInstanceFromIndex(idx), state)
+            HideHudText(PlayerInstanceFromIndex(idx), state)
     }
 }
 
 function ResetBuybackState(idx)
 {
     local state = buybackState[idx]
-    RemoveBuybackHud(PlayerInstanceFromIndex(idx), state)
+    HideHudText(PlayerInstanceFromIndex(idx), state)
 
     state.deathTime = -1.0
     state.window = -1.0
@@ -708,6 +697,16 @@ function ResetBuybackState(idx)
     state.estimate = -1.0
     state.skip = false
     state.opened = false
+}
+
+function ResetRefundState(idx)
+{
+    local state = refundState[idx]
+    HideHudText(PlayerInstanceFromIndex(idx), state)
+
+    state.held = false
+    state.opened = false
+    state.nextHud = 0.0
 }
 
 function StartBuybackTracking(victim)
@@ -873,7 +872,7 @@ function TryBuyback(client, price, state)
     if (earnedCash[idx] < 0)
         earnedCash[idx] = 0
 
-    RemoveBuybackHud(client, state)
+    HideHudText(client, state)
     state.estimate = -1.0
     client.ForceRespawn()
 
@@ -974,6 +973,57 @@ function WatchCanteenPurchases()
     }
 }
 
+
+function CheckRefundButtons(now)
+{
+    local inZone = false
+    for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
+    {
+        local client = PlayerInstanceFromIndex(i)
+        if (client == null || !client.IsValid())
+            continue
+
+        if (client.GetTeam() < TEAM_RED)
+            continue
+
+        local state = refundState[i]
+        // Dead players never get the prompt or the trigger
+        local zone = NetProps.GetPropInt(client, "m_lifeState") == 0 && NetProps.GetPropBool(client, "m_Shared.m_bInUpgradeZone")
+        if (!zone)
+        {
+            if (state.opened)
+            {
+                HideHudText(client, state)
+                state.opened = false
+                state.held = false
+            }
+            continue
+        }
+
+        inZone = true
+
+        // Avoid accidental presses of the button(TM)
+        local held = (NetProps.GetPropInt(client, "m_nButtons") & BUYBACK_BUTTON) != 0
+        if (state.opened)
+        {
+            if (held && !state.held)
+                DoRefund(client)
+        }
+        else
+        {
+            state.opened = true
+        }
+        state.held = held
+
+        if (now >= state.nextHud)
+        {
+            ShowHudText(client, state, "vscript_refund_hud", REFUND_PROMPT, REFUND_HUD_CHANNEL, BUYBACK_HUD_INTERVAL + 0.25, 0.1)
+            state.nextHud = now + BUYBACK_HUD_INTERVAL
+        }
+    }
+    return inZone
+}
+
 // Runs on worldspawn's think.
 function OnWorldSpawnThink()
 {
@@ -991,10 +1041,13 @@ function OnWorldSpawnThink()
         }
     }
 
+    // Check here so that we can have a fast path...
+    local refundZone = CheckRefundButtons(now)
+
     if (!roundRunning || arenaMode)
     {
         ClearBuybackHuds()
-        return BUYBACK_IDLE_INTERVAL
+        return refundZone ? BUYBACK_THINK_INTERVAL : BUYBACK_IDLE_INTERVAL
     }
 
     // The dead players being tracked. This is copied.
@@ -1061,7 +1114,7 @@ function OnWorldSpawnThink()
 
         if (remaining - BUYBACK_CUTOFF <= 0.0)
         {
-            RemoveBuybackHud(client, state)
+            HideHudText(client, state)
             continue
         }
 
@@ -1075,12 +1128,14 @@ function OnWorldSpawnThink()
 
         if (now >= state.nextHud)
         {
-            ShowBuybackHud(client, state, format("Press RELOAD to buy back into the game for $%d", price))
+            ShowHudText(client, state, "vscript_buyback_hud", 
+                        format("Press RELOAD to buy back into the game for $%d", price),
+                        BUYBACK_HUD_CHANNEL, BUYBACK_HUD_INTERVAL + 0.25, 0.7)
             state.nextHud = now + BUYBACK_HUD_INTERVAL
         }
     }
 
-    return fast ? BUYBACK_THINK_INTERVAL : BUYBACK_IDLE_INTERVAL
+    return (fast || refundZone) ? BUYBACK_THINK_INTERVAL : BUYBACK_IDLE_INTERVAL
 }
 
 function OnGameEvent_player_death(params)
