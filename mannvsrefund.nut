@@ -46,6 +46,12 @@ const POINT_CAPTURE_CASH = 100       // Whole team, on top of the game's own cap
 const FLAG_CAPTURE_CASH = 300        // Player who captured the flag
 const FLAG_CAPTURE_TEAM_CASH = 200   // Rest of the capturer's team
 
+// Currency scaling
+const CASH_SCALE_REF_COUNT = 6      // Minimum team sized required for scaling
+const CASH_SCALE_MIN = 0.35         // Minimum multiplier at very large teams
+const CASH_SCALE_TEAM_CAP = 17      // TODO: Figure out if this is a good idea.
+const CASH_ROUND_TO = 10
+
 // Fraction of a kill's credit given to each of the killer's teammates
 // This doesn't apply in Arena Mode because we do it differently there.
 const TEAM_KILL_SHARE = 0.5
@@ -111,6 +117,7 @@ roundRunning <- false // True while the round is live, which is when respawn wav
 arenaMode <- false // Arena has no respawn waves, so there's no buy-back there
 setupActive <- false // True when we are in pre-round setup
 setupUpgrades <- false // Did we place the upgrade station entities?
+cashScale <- { red = 0, blu = 0 } // We need this for per-team currency scaling
 teamKills <- {}  // Kills per team this round, used for steamroll detection
 teamKills[TEAM_RED] <- 0
 teamKills[TEAM_BLU] <- 0
@@ -146,6 +153,7 @@ function OnGameEvent_teamplay_round_start(params)
     ResetCanteens()
     EnsureUpgradeZonesAtResupply()
 
+    RecountTeamPlayers()
     PrecacheAssets()
 
     ClientPrint(null, HUD_PRINTTALK, CREDITS_MESSAGE)
@@ -289,8 +297,12 @@ function ResetPlayers()
 
 function OnGameEvent_player_team(params)
 {
+    ApplyTeamScaling(params.oldteam, -1)
+
     if (params.disconnect)
         return
+
+    ApplyTeamScaling(params.team, 1)
 
     if (params.team == params.oldteam)
         return
@@ -604,13 +616,69 @@ function PlayMoneySound(client)
     })
 }
 
-function AddCurrency(client, cash, steamrolled = -2)
+function RecountTeamPlayers()
+{
+    cashScale.red = 0
+    cashScale.blu = 0
+
+    local player = null
+    while (player = Entities.FindByClassname(player, "player"))
+    {
+        local team = player.GetTeam()
+        if (team == TEAM_RED)
+            cashScale.red++
+        else if (team == TEAM_BLU)
+            cashScale.blu++
+    }
+}
+
+function GetCashScale(team)
+{
+    local count = team == TEAM_RED ? cashScale.red : cashScale.blu
+    if (count > CASH_SCALE_TEAM_CAP)
+        count = CASH_SCALE_TEAM_CAP
+    if (count < 1)
+        return 1.0
+    local mult = CASH_SCALE_REF_COUNT.tofloat() / count
+    if (mult > 1.0)
+        mult = 1.0
+    if (mult < CASH_SCALE_MIN)
+        mult = CASH_SCALE_MIN
+    return mult
+}
+
+function ApplyTeamScaling(team, delta)
+{
+    if (team == TEAM_RED)
+        cashScale.red += delta
+    else if (team == TEAM_BLU)
+        cashScale.blu += delta
+}
+
+function GetScaledCash(client, cash, steamrolled)
 {
     // The losing team of a steamroll earns extra
+    if (client.GetTeam() == steamrolled)
+        cash *= STEAMROLL_BONUS
+
+    // Scale the awarded money with the team/player count
+    cash *= GetCashScale(client.GetTeam())
+
+    if (cash > 0)
+    {
+        cash = (cash / CASH_ROUND_TO + 0.5).tointeger() * CASH_ROUND_TO
+        if (cash < CASH_ROUND_TO)
+            cash = CASH_ROUND_TO
+    }
+    return cash
+}
+
+function AddCurrency(client, cash, steamrolled = -2)
+{
     if (steamrolled == -2)
         steamrolled = GetSteamrolledTeam()
-    if (client.GetTeam() == steamrolled)
-        cash = (cash * STEAMROLL_BONUS + 0.5).tointeger()
+
+    cash = GetScaledCash(client, cash, steamrolled)
 
     client.SetCurrency(client.GetCurrency() + cash)
     earnedCash[client.entindex()] += cash
