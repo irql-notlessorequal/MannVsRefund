@@ -48,7 +48,9 @@ const FLAG_CAPTURE_TEAM_CASH = 200   // Rest of the capturer's team
 
 // Currency scaling
 const CASH_SCALE_REF_COUNT = 6      // Minimum team sized required for scaling
-const CASH_SCALE_MIN = 0.35         // Minimum multiplier at very large teams
+const CASH_SCALE_STEP_PLAYERS = 2   // Each ladder step spans this many extra players
+const CASH_SCALE_STEP = 0.1         // ...and trims payouts by this fraction
+const CASH_SCALE_MIN = 0.4          // The minimum scaling for the money no matter what.
 const CASH_SCALE_TEAM_CAP = 17      // TODO: Figure out if this is a good idea.
 const CASH_ROUND_TO = 10
 
@@ -637,11 +639,11 @@ function GetCashScale(team)
     local count = team == TEAM_RED ? cashScale.red : cashScale.blu
     if (count > CASH_SCALE_TEAM_CAP)
         count = CASH_SCALE_TEAM_CAP
-    if (count < 1)
+    if (count <= CASH_SCALE_REF_COUNT)
         return 1.0
-    local mult = CASH_SCALE_REF_COUNT.tofloat() / count
-    if (mult > 1.0)
-        mult = 1.0
+
+    local steps = (count - CASH_SCALE_REF_COUNT + CASH_SCALE_STEP_PLAYERS - 1) / CASH_SCALE_STEP_PLAYERS
+    local mult = 1.0 - steps * CASH_SCALE_STEP
     if (mult < CASH_SCALE_MIN)
         mult = CASH_SCALE_MIN
     return mult
