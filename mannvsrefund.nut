@@ -1223,6 +1223,9 @@ function OnGameEvent_player_death(params)
     if (victim != null && TeamHasAliveMedic(victim.GetTeam()))
         SpawnReviveMarker(victim)
 
+    if (!roundRunning)
+        return
+
     if (attacker != null)
     {
         if (attacker != victim && attacker.GetTeam() != victim.GetTeam())
