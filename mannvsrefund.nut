@@ -1207,7 +1207,7 @@ function OnWorldSpawnThink()
         {
             ShowHudText(client, state, "vscript_buyback_hud", 
                         format("Press RELOAD to buy back into the game for $%d", price),
-                        BUYBACK_HUD_CHANNEL, BUYBACK_HUD_INTERVAL + 0.25, 0.65)
+                        BUYBACK_HUD_CHANNEL, BUYBACK_HUD_INTERVAL + 0.25, 0.33)
             state.nextHud = now + BUYBACK_HUD_INTERVAL
         }
     }
