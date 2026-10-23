@@ -49,9 +49,9 @@ const FLAG_CAPTURE_TEAM_CASH = 200   // Rest of the capturer's team
 // Currency scaling
 const CASH_SCALE_REF_COUNT = 6      // Minimum team sized required for scaling
 const CASH_SCALE_STEP_PLAYERS = 2   // Each ladder step spans this many extra players
-const CASH_SCALE_STEP = 0.1         // ...and trims payouts by this fraction
-const CASH_SCALE_MIN = 0.4          // The minimum scaling for the money no matter what.
-const CASH_ROUND_TO = 10
+const CASH_SCALE_STEP = 0.07        // ...and trims payouts by this fraction
+const CASH_SCALE_MIN = 0.1          // The minimum scaling for the money no matter what.
+const CASH_ROUND_TO = 5
 
 // Fraction of a kill's credit given to each of the killer's teammates
 // This doesn't apply in Arena Mode because we do it differently there.
