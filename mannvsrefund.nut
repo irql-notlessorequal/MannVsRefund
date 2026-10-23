@@ -244,8 +244,8 @@ function DoRefund(client)
     // locker and keep some of their upgrades for free...
     RemoveUpgradesFromAllClasses(client)
 
-    // Reset all canteens.
-    ResetCanteens()
+    // Reset all canteens on the player...
+    ResetCanteens(client)
 
     // The refund flag removes upgrades but doesn't return the money,
     // so restore the player's total earnings for this round
@@ -442,11 +442,14 @@ function IsArenaMode()
     return Entities.FindByClassname(null, "tf_logic_arena") != null
 }
 
-function ResetCanteens()
+function ResetCanteens(client = null)
 {
     local ent = null
     while (ent = Entities.FindByClassname(ent, "tf_powerup_bottle"))
     {
+        if (client != null && NetProps.GetPropEntity(ent, "m_hOwnerEntity") != client)
+            continue
+
         NetProps.SetPropInt(ent, "m_usNumCharges", 0)
         NetProps.SetPropBool(ent, "m_bActive", false)
         ent.RemoveAttribute("critboost")
