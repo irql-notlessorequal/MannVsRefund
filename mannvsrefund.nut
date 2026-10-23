@@ -89,6 +89,12 @@ const WAVE_CACHE_INTERVAL = 0.5      // How often respawn wave lengths are recal
 const MONEY_PICKUP_SOUND = "mvm/mvm_money_pickup.wav"
 const MONEY_PICKUP_COOLDOWN = 1.0    // Adjust this to avoid hearing "mvm/mvm_money_pickup.wav" constantly
 
+// Gas Passer Nerf
+const GAS_BLAST_DAMAGE = 350         // Base damage before resistances applied.
+const DMG_TYPE_SLASH = 4
+const DMG_TYPE_BURN = 8
+const DMG_TYPE_BLAST = 64
+
 // MvM sounds aren't precached on non-MvM maps
 function PrecacheAssets()
 {
@@ -1298,6 +1304,24 @@ function OnGameEvent_teamplay_flag_event(params)
                 AddCurrency(client, FLAG_CAPTURE_TEAM_CASH)
         }
     }
+}
+
+function OnScriptHook_OnTakeDamage(params)
+{
+    // Try to escape this path as quick as possible.
+    if (!(params.damage_type & DMG_TYPE_SLASH) ||
+          params.damage_stats != Constants.ETFDmgCustom.TF_DMG_CUSTOM_BURNING)
+        return
+
+    local weapon = params.weapon
+    if (weapon == null || weapon.GetClassname() != "tf_weapon_jar_gas")
+        return
+
+    if (DEBUG)
+        printl("gas burst: damage " + params.damage + " -> " + GAS_BLAST_DAMAGE + ", type " + params.damage_type)
+
+    params.damage = GAS_BLAST_DAMAGE
+    params.damage_type = params.damage_type | DMG_TYPE_BLAST | DMG_TYPE_BURN
 }
 
 // We actually need to check for this every round now.
