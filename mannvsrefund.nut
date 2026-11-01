@@ -2,31 +2,28 @@
 // Copyright (C) IRQL_NOT_LESS_OR_EQUAL
 // Original "MvM upgrades" script by by Lazyneer.
 //
-// 
+//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as
 // published by the Free Software Foundation, either version 3 of the
 // License, or (at your option) any later version.
-// 
+//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 const CREDITS_MESSAGE = "\x01Mann versus Refund. Created by \x079E2A2Brake\x01."
 const REFUND_PROMPT = "Hold RELOAD to reset your current upgrades."
-const HUD_PRINTTALK = 3
 const DEBUG = false // Set to true to print round info to the server console
 const MONEY_VANISH_SOUND = "mvm/mvm_money_vanish.wav"
 const FLAG_EVENT_CAPTURE = 2
-const SOLID_BBOX = 2
 const WIPE_BATCH_COUNT = 2
 const SETUP_BUILDING_LEVEL = 3
 const OBJECT_TYPE_SAPPER = 3
-const NUM_CLASSES = 9
 const UPGRADE_VO_COUNT = 11
 const FLAG_DEAD_RINGER = 32
 
@@ -58,8 +55,6 @@ const CASH_ROUND_TO = 5
 const TEAM_KILL_SHARE = 0.5
 
 // if one team is far ahead on kills this round, the other team earns more
-const TEAM_RED = 2
-const TEAM_BLU = 3
 const STEAMROLL_MIN_KILLS = 20   // Total kills needed before a steamroll can be declared
 const STEAMROLL_RATIO = 2.0      // Leading team needs this many times the other team's kills
 const STEAMROLL_BONUS = 1.1      // Income multiplier for the losing team
@@ -91,9 +86,6 @@ const MONEY_PICKUP_COOLDOWN = 1.0    // Adjust this to avoid hearing "mvm/mvm_mo
 
 // Gas Passer Nerf
 const GAS_BLAST_DAMAGE = 350         // Base damage before resistances applied.
-const DMG_TYPE_SLASH = 4
-const DMG_TYPE_BURN = 8
-const DMG_TYPE_BLAST = 64
 
 // MvM sounds aren't precached on non-MvM maps
 function PrecacheAssets()
@@ -126,8 +118,8 @@ setupActive <- false // True when we are in pre-round setup
 setupUpgrades <- false // Did we place the upgrade station entities?
 cashScale <- { red = 0, blu = 0 } // We need this for per-team currency scaling
 teamKills <- {}  // Kills per team this round, used for steamroll detection
-teamKills[TEAM_RED] <- 0
-teamKills[TEAM_BLU] <- 0
+teamKills[Constants.ETFTeam.TF_TEAM_RED] <- 0
+teamKills[Constants.ETFTeam.TF_TEAM_BLUE] <- 0
 for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
 {
     hasRecievedCash[i] <- false
@@ -144,8 +136,8 @@ function OnGameEvent_teamplay_round_start(params)
     if (DEBUG)
         printl("round_start: full_reset=" + params.full_reset)
 
-    teamKills[TEAM_RED] = 0
-    teamKills[TEAM_BLU] = 0
+    teamKills[Constants.ETFTeam.TF_TEAM_RED] = 0
+    teamKills[Constants.ETFTeam.TF_TEAM_BLUE] = 0
     roundRunning = false
 
     if (IsWaitingForPlayers())
@@ -163,7 +155,7 @@ function OnGameEvent_teamplay_round_start(params)
     RecountTeamPlayers()
     PrecacheAssets()
 
-    ClientPrint(null, HUD_PRINTTALK, CREDITS_MESSAGE)
+    ClientPrint(null, Constants.EHudNotify.HUD_PRINTTALK, CREDITS_MESSAGE)
 
     // Wait out the round start freeze before playing the voice line
     local freeze = Convars.GetFloat("tf_player_movement_restart_freeze")
@@ -431,7 +423,7 @@ function RemoveUpgradesFromAllClasses(client, health = null)
     if (health == null)
         health = client.GetHealth()
 
-    for (local i = 1; i <= NUM_CLASSES; i++)
+    for (local i = 1; i <= Constants.ETFClass.TF_CLASS_COUNT_ALL; i++)
     {
         client.SetPlayerClass(i)
         client.Regenerate(true)
@@ -565,7 +557,7 @@ function SpawnReviveMarker(victim)
     if (USE_TEAMCOLOR_TOMBSTONE)
     {
         NetProps.SetPropInt(marker, "m_nModelIndex", PrecacheModel(TEAMCOLOR_TOMBSTONE_MODEL))
-        marker.SetSkin(victim.GetTeam() == TEAM_BLU ? 1 : 0)
+        marker.SetSkin(victim.GetTeam() == Constants.ETFTeam.TF_TEAM_BLUE ? 1 : 0)
     }
 
     reviveMarkers[victim.entindex()] = marker
@@ -588,7 +580,7 @@ function EnsureUpgradeZonesAtResupply()
                 origin      = ent.GetOrigin()
             })
 
-            brush.KeyValueFromInt("solid", SOLID_BBOX)
+            brush.KeyValueFromInt("solid", Constants.ESolidType.SOLID_BBOX)
             brush.SetSize(mins, maxs)
         }
         setupUpgrades = true
@@ -598,15 +590,15 @@ function EnsureUpgradeZonesAtResupply()
 // Returns the team that is being steamrolled, or -1 if there isn't a steamroll
 function GetSteamrolledTeam()
 {
-    local red = teamKills[TEAM_RED]
-    local blu = teamKills[TEAM_BLU]
+    local red = teamKills[Constants.ETFTeam.TF_TEAM_RED]
+    local blu = teamKills[Constants.ETFTeam.TF_TEAM_BLUE]
 
     if (red + blu < STEAMROLL_MIN_KILLS)
         return -1
     if (red >= blu * STEAMROLL_RATIO)
-        return TEAM_BLU
+        return Constants.ETFTeam.TF_TEAM_BLUE
     if (blu >= red * STEAMROLL_RATIO)
-        return TEAM_RED
+        return Constants.ETFTeam.TF_TEAM_RED
     return -1
 }
 
@@ -635,16 +627,16 @@ function RecountTeamPlayers()
     while (player = Entities.FindByClassname(player, "player"))
     {
         local team = player.GetTeam()
-        if (team == TEAM_RED)
+        if (team == Constants.ETFTeam.TF_TEAM_RED)
             cashScale.red++
-        else if (team == TEAM_BLU)
+        else if (team == Constants.ETFTeam.TF_TEAM_BLUE)
             cashScale.blu++
     }
 }
 
 function GetCashScale(team)
 {
-    local count = team == TEAM_RED ? cashScale.red : cashScale.blu
+    local count = team == Constants.ETFTeam.TF_TEAM_RED ? cashScale.red : cashScale.blu
     if (count <= CASH_SCALE_REF_COUNT)
         return 1.0
 
@@ -657,9 +649,9 @@ function GetCashScale(team)
 
 function ApplyTeamScaling(team, delta)
 {
-    if (team == TEAM_RED)
+    if (team == Constants.ETFTeam.TF_TEAM_RED)
         cashScale.red += delta
-    else if (team == TEAM_BLU)
+    else if (team == Constants.ETFTeam.TF_TEAM_BLUE)
         cashScale.blu += delta
 }
 
@@ -819,7 +811,7 @@ function RefreshWaveCache(now)
     waveCache.time = now
     waveCache.rules = Entities.FindByClassname(null, "tf_gamerules")
     waveCache.delay = GetBuybackDelay()
-    foreach (team in [TEAM_RED, TEAM_BLU])
+    foreach (team in [Constants.ETFTeam.TF_TEAM_RED, Constants.ETFTeam.TF_TEAM_BLUE])
     {
         waveCache.scaled[team] <- GetWaveLength(team, true)
         waveCache.unscaled[team] <- GetWaveLength(team, false)
@@ -925,7 +917,7 @@ function BroadcastTeamColoredMessage(player, actionText)
     local coloredName = colorCode + playerName + "\x01"
     local finalMessage = coloredName + " " + actionText
 
-    ClientPrint(null, HUD_PRINTTALK, finalMessage)
+    ClientPrint(null, Constants.EHudNotify.HUD_PRINTTALK, finalMessage)
 }
 
 function TryBuyback(client, price, state)
@@ -1059,7 +1051,7 @@ function CheckRefundButtons(now)
         if (client == null || !client.IsValid())
             continue
 
-        if (client.GetTeam() < TEAM_RED)
+        if (client.GetTeam() < Constants.ETFTeam.TF_TEAM_RED)
             continue
 
         local state = refundState[i]
@@ -1153,7 +1145,7 @@ function OnWorldSpawnThink()
         local state = buybackState[idx]
 
         // Only dead players can buy back...
-        if (NetProps.GetPropInt(client, "m_lifeState") == 0 || client.GetTeam() < TEAM_RED)
+        if (NetProps.GetPropInt(client, "m_lifeState") == 0 || client.GetTeam() < Constants.ETFTeam.TF_TEAM_RED)
             continue
 
         local respawn = GetRespawnTime(client)
@@ -1205,7 +1197,7 @@ function OnWorldSpawnThink()
 
         if (now >= state.nextHud)
         {
-            ShowHudText(client, state, "vscript_buyback_hud", 
+            ShowHudText(client, state, "vscript_buyback_hud",
                         format("Press RELOAD to buy back into the game for $%d", price),
                         BUYBACK_HUD_CHANNEL, BUYBACK_HUD_INTERVAL + 0.25, 0.33)
             state.nextHud = now + BUYBACK_HUD_INTERVAL
@@ -1309,7 +1301,7 @@ function OnGameEvent_teamplay_flag_event(params)
 function OnScriptHook_OnTakeDamage(params)
 {
     // Try to escape this path as quick as possible.
-    if (!(params.damage_type & DMG_TYPE_SLASH) ||
+    if (!(params.damage_type & Constants.FDmgType.DMG_SLASH) ||
           params.damage_stats != Constants.ETFDmgCustom.TF_DMG_CUSTOM_BURNING)
         return
 
@@ -1321,7 +1313,7 @@ function OnScriptHook_OnTakeDamage(params)
         printl("gas burst: damage " + params.damage + " -> " + GAS_BLAST_DAMAGE + ", type " + params.damage_type)
 
     params.damage = GAS_BLAST_DAMAGE
-    params.damage_type = params.damage_type | DMG_TYPE_BLAST | DMG_TYPE_BURN
+    params.damage_type = params.damage_type | Constants.FDmgType.DMG_BLAST | Constants.FDmgType.DMG_BURN
 }
 
 // We actually need to check for this every round now.
