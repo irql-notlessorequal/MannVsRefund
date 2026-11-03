@@ -1221,13 +1221,14 @@ function OnGameEvent_player_death(params)
     local attacker = GetPlayerFromUserID(params.attacker)
     local assister = GetPlayerFromUserID(params.assister)
     local victim = GetPlayerFromUserID(params.userid)
+    local silent = "silent_kill" in params && params.silent_kill
 
     if (victim != null)
         StartBuybackTracking(victim)
 
     // Do we have a medic? If so spawn a reanimator for said medic.
     // FIXME: This probably should be generalized to a medic in general?
-    if (victim != null && TeamHasAliveMedic(victim.GetTeam()))
+    if (victim != null && TeamHasAliveMedic(victim.GetTeam()) && !silent)
         SpawnReviveMarker(victim)
 
     if (!roundRunning)
