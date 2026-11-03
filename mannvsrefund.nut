@@ -26,10 +26,9 @@ const SETUP_BUILDING_LEVEL = 3
 const OBJECT_TYPE_SAPPER = 3
 const UPGRADE_VO_COUNT = 11
 const FLAG_DEAD_RINGER = 32
+const REFUND_HUD_INTERVAL = 1.0
 
 // This requires the custom model in the assets folder.
-// In addition, you need a plugin or re-packed map to push the asset to clients.
-const USE_TEAMCOLOR_TOMBSTONE = false
 const TEAMCOLOR_TOMBSTONE_MODEL = "models/props_mvm/mvm_revive_tombstone_teamcolor.mdl"
 
 // I'm going to be a jerk and just assume your spending it all on Crit Canteens
@@ -66,9 +65,8 @@ const BUYBACK_MIN_COST = 100         // Price just before buy-back closes
 const BUYBACK_CUTOFF = 3.0           // Buy-back closes this many seconds before the respawn
 const BUYBACK_THINK_INTERVAL = 0.05  // How often dead players' buttons are checked
 const BUYBACK_IDLE_INTERVAL = 0.25   // Think rate when nobody is dead
-const BUYBACK_HUD_INTERVAL = 1.0     // How often the HUD text is refreshed
-const BUYBACK_PRICE_STEP = 10        // The price drops in steps of this much (keep the min and max costs a multiple of it)
-const BUYBACK_BUTTON = 8192          // IN_RELOAD
+const BUYBACK_HUD_INTERVAL = 0.5     // How often the HUD text is refreshed
+const BUYBACK_PRICE_STEP = 5         // The price drops in steps of this much
 const BUYBACK_DENIED_SOUND = "replay/cameracontrolerror.wav"
 const BUYBACK_BOUGHT_IN_SOUND = "mvm/mvm_bought_in.wav"
 const BUYBACK_MIN_WINDOW = 5.0       // Buy-back must stay open at least this long to be offered at all (very short respawns skip it)
@@ -97,12 +95,10 @@ function PrecacheAssets()
     PrecacheSound(BUYBACK_DENIED_SOUND)
     for (local i = 1; i <= UPGRADE_VO_COUNT; i++)
         PrecacheSound(format("vo/mvm_get_to_upgrade%02d.mp3", i))
-
-    if (USE_TEAMCOLOR_TOMBSTONE)
-        PrecacheModel(TEAMCOLOR_TOMBSTONE_MODEL)
 }
 PrecacheAssets()
 
+hasCompanion <- false
 resetQueue <- [] // Queue for clients that need their upgrades to be reset.
 hasRecievedCash <- {}
 earnedCash <- {} // Total currency each player has received this round
@@ -127,9 +123,16 @@ for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
     earnedCash[i] <- 0
     reviveMarkers[i] <- null
     refundState[i] <- { hud = null, held = false, opened = false, nextHud = 0.0 }
-    buybackState[i] <- { deathTime = -1.0, window = -1.0, held = false, nextHud = 0.0, estimate = -1.0, hud = null, skip = false, opened = false }
+    buybackState[i] <- { deathTime = -1.0, window = -1.0, held = false, nextHud = 0.0,
+                         estimate = -1.0, hud = null, skip = false, opened = false, lastPrice = 0.0 }
     moneySoundTime[i] <- 0.0
     canteenWatch[i] <- { charges = 0, currency = 0 }
+}
+
+if (self.GetName() == "mvr_sourcemod")
+{
+    hasCompanion <- true
+    printl("Mann vs. Refund companion was detected.")
 }
 
 function OnGameEvent_teamplay_round_start(params)
@@ -555,7 +558,7 @@ function SpawnReviveMarker(victim)
     marker.SetTeam(victim.GetTeam())
     marker.SetBodygroup(1, victim.GetPlayerClass() - 1)
 
-    if (USE_TEAMCOLOR_TOMBSTONE)
+    if (hasCompanion)
     {
         NetProps.SetPropInt(marker, "m_nModelIndex", PrecacheModel(TEAMCOLOR_TOMBSTONE_MODEL))
         marker.SetSkin(victim.GetTeam() == Constants.ETFTeam.TF_TEAM_BLUE ? 1 : 0)
@@ -766,6 +769,7 @@ function ResetBuybackState(idx)
     state.estimate = -1.0
     state.skip = false
     state.opened = false
+    state.lastPrice = 0.0
 }
 
 function ResetRefundState(idx)
@@ -1072,7 +1076,7 @@ function CheckRefundButtons(now)
         inZone = true
 
         // Avoid accidental presses of the button(TM)
-        local held = (NetProps.GetPropInt(client, "m_nButtons") & BUYBACK_BUTTON) != 0
+        local held = (NetProps.GetPropInt(client, "m_nButtons") & Constants.FButtons.IN_RELOAD) != 0
         if (state.opened)
         {
             if (held && !state.held)
@@ -1087,8 +1091,8 @@ function CheckRefundButtons(now)
         if (now >= state.nextHud)
         {
             ShowHudText(client, state, "vscript_refund_hud",
-                        REFUND_PROMPT, REFUND_HUD_CHANNEL, BUYBACK_HUD_INTERVAL + 0.25, 0.135)
-            state.nextHud = now + BUYBACK_HUD_INTERVAL
+                        REFUND_PROMPT, REFUND_HUD_CHANNEL, REFUND_HUD_INTERVAL + 0.15, 0.135)
+            state.nextHud = now + REFUND_HUD_INTERVAL
         }
     }
     return inZone
@@ -1162,7 +1166,7 @@ function OnWorldSpawnThink()
             continue
 
         // Avoid accidental presses of the button(TM)
-        local held = (NetProps.GetPropInt(client, "m_nButtons") & BUYBACK_BUTTON) != 0
+        local held = (NetProps.GetPropInt(client, "m_nButtons") & Constants.FButtons.IN_RELOAD) != 0
         if (!state.opened)
         {
             state.opened = true
@@ -1196,12 +1200,13 @@ function OnWorldSpawnThink()
             continue
         }
 
-        if (now >= state.nextHud)
+        if (price != state.lastPrice && now >= state.nextHud)
         {
+            state.lastPrice = price
+            state.nextHud = now + BUYBACK_HUD_INTERVAL
             ShowHudText(client, state, "vscript_buyback_hud",
                         format("Press RELOAD to buy back into the game for $%d", price),
-                        BUYBACK_HUD_CHANNEL, BUYBACK_HUD_INTERVAL + 0.25, 0.33)
-            state.nextHud = now + BUYBACK_HUD_INTERVAL
+                        BUYBACK_HUD_CHANNEL, BUYBACK_HUD_INTERVAL, 0.33)
         }
     }
 
