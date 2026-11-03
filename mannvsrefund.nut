@@ -28,7 +28,8 @@ const UPGRADE_VO_COUNT = 11
 const FLAG_DEAD_RINGER = 32
 
 // This requires the custom model in the assets folder.
-const USE_TEAMCOLOR_TOMBSTONE = true
+// In addition, you need a plugin or re-packed map to push the asset to clients.
+const USE_TEAMCOLOR_TOMBSTONE = false
 const TEAMCOLOR_TOMBSTONE_MODEL = "models/props_mvm/mvm_revive_tombstone_teamcolor.mdl"
 
 // I'm going to be a jerk and just assume your spending it all on Crit Canteens
