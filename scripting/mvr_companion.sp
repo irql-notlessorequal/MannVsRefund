@@ -20,6 +20,8 @@
 #include <sourcemod>
 #include <sdktools>
 
+#define MAX_UPGRADE_PATH 260
+
 static const int STALEMATE_SERVER_TIMELIMIT = 2;
 static const int WINREASON_TIMELIMIT = 6;
 static const char ROUND_WIN_FULL[] = "mvm_end_last_wave_short.wav";
@@ -37,8 +39,11 @@ static const char assets[][] =
     "models/props_mvm/mvm_revive_tombstone_teamcolor.phy",
 };
 
+static bool g_bUpgradeFilePending = false;
 static bool g_bMapTimelimitStalemate = false;
 static bool g_bGameOver = false;
+
+char g_PendingUpgradeFile[MAX_UPGRADE_PATH];
 
 public Plugin myinfo =
 {
@@ -58,6 +63,12 @@ public void OnPluginStart()
 
     HookEvent("teamplay_broadcast_audio", Event_BroadcastAudio, EventHookMode_Pre);
     AddNormalSoundHook(view_as<NormalSHook>(Hook_NormalSound));
+
+    RegAdminCmd(
+        "sm_mvr_upgradefile",
+        Command_SetMvmUpgrades, ADMFLAG_RCON,
+        "Changes the upgrade file used by Mann vs. Refund on the next round"
+    );
 }
 
 public void OnMapStart()
@@ -82,6 +93,45 @@ public void OnConfigsExecuted()
         DispatchKeyValue(logicScript, "targetname", companionAvailable);
         DispatchSpawn(logicScript);
     }
+}
+
+public Action Command_SetMvmUpgrades(int client, int args)
+{
+    if (args != 1)
+    {
+        ReplyToCommand(client, "Usage: sm_mvr_upgradefile <file>");
+        return Plugin_Handled;
+    }
+
+    char path[MAX_UPGRADE_PATH];
+    GetCmdArg(1, path, sizeof(path));
+
+    if (!IsValidUpgradePath(path))
+    {
+        ReplyToCommand(client, "Invalid upgrade file path.");
+        return Plugin_Handled;
+    }
+
+    if (!FileExists(path, true, "MOD"))
+    {
+        ReplyToCommand(client, "File not found (%s)", path);
+        return Plugin_Handled;
+    }
+
+    // We can't make clients download it live without some rafmod
+    // tier horrors, so we'll assume you know what you are doing.
+    AddFileToDownloadsTable(path);
+
+    strcopy(g_PendingUpgradeFile, sizeof(g_PendingUpgradeFile), path);
+    g_bUpgradeFilePending = true;
+
+    ReplyToCommand(
+        client,
+        "Queued the upgrade file for the next round.",
+        path
+    );
+
+    return Plugin_Handled;
 }
 
 public Action Hook_NormalSound(int clients[MAXPLAYERS], int &numClients,
@@ -124,6 +174,8 @@ public void Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
 {
     g_bMapTimelimitStalemate = false;
     g_bGameOver = false;
+
+    ApplyPendingUpgradeFile();
 }
 
 public void Event_RoundStalemate(Event event, const char[] name, bool dontBroadcast)
@@ -171,3 +223,61 @@ public void Event_RoundWin(Event event, const char[] name, bool dontBroadcast)
 }
 
 #undef PLAY_SOUND_TO_CLIENT
+
+stock bool IsValidUpgradePath(const char[] path)
+{
+    int len = strlen(path);
+
+    if (len < 5 || len >= MAX_UPGRADE_PATH)
+        return false;
+
+    if (path[0] == '/' || StrContains(path, "..") != -1)
+        return false;
+
+    // TF2 expects a lowercase .txt extension.
+    if (path[len - 4] != '.' ||
+        path[len - 3] != 't' ||
+        path[len - 2] != 'x' ||
+        path[len - 1] != 't')
+        return false;
+
+    for (int i = 0; i < len; i++)
+    {
+        char c = path[i];
+
+        bool valid =
+            (c >= 'a' && c <= 'z') ||
+            (c >= 'A' && c <= 'Z') ||
+            (c >= '0' && c <= '9') ||
+            c == '/' || c == '_' || c == '-' || c == '.';
+
+        if (!valid)
+            return false;
+    }
+
+    return true;
+}
+
+void ApplyPendingUpgradeFile()
+{
+    if (!g_bUpgradeFilePending)
+        return;
+
+    int gamerules = FindEntityByClassname(-1, "tf_gamerules");
+    if (gamerules == -1)
+    {
+        PrintToServer("[Mann vs. Refund] Could not find tf_gamerules.");
+        return;
+    }
+
+    SetVariantString(g_PendingUpgradeFile);
+
+    if (!AcceptEntityInput(gamerules, "SetCustomUpgradesFile"))
+    {
+        PrintToServer("[Mann vs. Refund] Failed to set custom upgrades file.");
+    }
+
+    g_bUpgradeFilePending = false;
+    g_PendingUpgradeFile[0] = '\0';
+}
+#undef MAX_UPGRADE_PATH

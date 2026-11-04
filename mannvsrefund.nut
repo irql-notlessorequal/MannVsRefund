@@ -99,6 +99,7 @@ function PrecacheAssets()
 PrecacheAssets()
 
 hasCompanion <- false
+changedFile <- false // Did the user change the upgrades file from the companion?
 resetQueue <- [] // Queue for clients that need their upgrades to be reset.
 hasRecievedCash <- {}
 earnedCash <- {} // Total currency each player has received this round
@@ -194,7 +195,7 @@ function OnGameEvent_teamplay_round_win(params)
 
     roundRunning = false
 
-    if (params.full_round)
+    if (params.full_round || changedFile)
         ResetPlayers()
 }
 
@@ -296,6 +297,8 @@ function ResetPlayers()
     {
         ResetPlayerData(i)
     }
+
+    changedFile = false
 }
 
 function OnGameEvent_player_team(params)
@@ -1303,6 +1306,11 @@ function OnGameEvent_teamplay_flag_event(params)
                 AddCurrency(client, FLAG_CAPTURE_TEAM_CASH)
         }
     }
+}
+
+function OnGameEvent_upgrades_file_changed(params)
+{
+    changedFile = true
 }
 
 function OnScriptHook_OnTakeDamage(params)
