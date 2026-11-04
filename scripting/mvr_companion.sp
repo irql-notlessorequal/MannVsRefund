@@ -89,7 +89,7 @@ public void OnConfigsExecuted()
     int logicScript = CreateEntityByName("logic_script");
     if (IsValidEntity(logicScript))
     {
-        DispatchKeyValue(logicScript, "vscripts", "mannvsrefund.nut");
+        DispatchKeyValue(logicScript, "vscripts", "mannvsrefund/main");
         DispatchKeyValue(logicScript, "targetname", companionAvailable);
         DispatchSpawn(logicScript);
     }

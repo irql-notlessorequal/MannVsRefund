@@ -1,10 +1,23 @@
 # MannVsRefund
 
-Turn any map into MvM with upgrades!
+Turn _almost_ any map into MvM with upgrades!
 
 # How to use.
 
-`script_execute mannvsrefund`
+Run `script_execute mannvsrefund/main` in your server console.
+
+An optional SourceMod plugin is available that enables
+
+- MvM sounds for round win/lose
+- Team-colored revive markers
+- Automatic script setup
+
+You do not need any of the files in the assets folder unless you are using the optional SourceMod plugin.
+
+# Special Thanks
+
+- Lazyneer for the initial script that this was worked upon.
+- [redsun.tf](https://redsun.tf/) for playtesting and feedback
 
 # License
 
@@ -12,7 +25,7 @@ The public version of this script, meaning this repository,
 is licensed under the GNU Affero General Public License v3.
 
 ```
-MannVsRefund, a modified version of Lazyneer's MvM upgrades
+MannVsRefund.
 Copyright (C) IRQL_NOT_LESS_OR_EQUAL
 
 This program is free software: you can redistribute it and/or modify
