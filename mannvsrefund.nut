@@ -427,7 +427,7 @@ function RemoveUpgradesFromAllClasses(client, health = null)
     if (health == null)
         health = client.GetHealth()
 
-    for (local i = 1; i <= Constants.ETFClass.TF_CLASS_COUNT_ALL; i++)
+    for (local i = 1; i <= Constants.ETFClass.TF_CLASS_ENGINEER; i++)
     {
         client.SetPlayerClass(i)
         client.Regenerate(true)
