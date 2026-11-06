@@ -20,7 +20,12 @@
 #include <sourcemod>
 #include <sdktools>
 
+#if defined(STEAMWORKS)
+#include <SteamWorks>
+#endif
+
 #define MAX_UPGRADE_PATH 260
+#define SNDVOL_REDUCED 0.8
 
 static const int STALEMATE_SERVER_TIMELIMIT = 2;
 static const int WINREASON_TIMELIMIT = 6;
@@ -82,6 +87,10 @@ public void OnMapStart()
     PrecacheSound(ROUND_WIN_FULL);
     PrecacheSound(ROUND_WIN_STAGED);
     PrecacheSound(ROUND_LOSE);
+
+#if defined(STEAMWORKS)
+	SteamWorks_SetGameDescription("Mann vs. Refund");
+#endif
 }
 
 public void OnConfigsExecuted()
@@ -191,8 +200,8 @@ public void Event_WinPanel(Event event, const char[] name, bool dontBroadcast)
 
 #define PLAY_SOUND_TO_CLIENT(%1,%2) \
     EmitSoundToClient(%1, %2, SOUND_FROM_PLAYER, \
-                      SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, \
-                      SNDVOL_NORMAL, SNDPITCH_NORMAL, -1, \
+                      SNDCHAN_AUTO, SNDLEVEL_GUNFIRE, SND_NOFLAGS, \
+                      SNDVOL_REDUCED, SNDPITCH_NORMAL, -1, \
                       NULL_VECTOR, NULL_VECTOR, true);
 
 public void Event_RoundWin(Event event, const char[] name, bool dontBroadcast)
@@ -280,4 +289,5 @@ void ApplyPendingUpgradeFile()
     g_bUpgradeFilePending = false;
     g_PendingUpgradeFile[0] = '\0';
 }
+#undef SNDVOL_REDUCED
 #undef MAX_UPGRADE_PATH
