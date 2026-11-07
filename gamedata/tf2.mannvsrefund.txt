@@ -1,0 +1,16 @@
+"Games"
+{
+	"tf"
+	{
+		"Signatures"
+		{
+			"CTFPlayer::ReapplyPlayerUpgrades"
+			{
+				"library"	"server"
+				"linux"		"@_ZN9CTFPlayer21ReapplyPlayerUpgradesEv"
+                "linux64"   "@_ZN9CTFPlayer21ReapplyPlayerUpgradesEv"
+                // If your hosting this on Windows, my condolences.
+			}
+		}
+	}
+}

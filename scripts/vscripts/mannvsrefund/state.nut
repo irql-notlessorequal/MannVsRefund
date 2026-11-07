@@ -38,6 +38,11 @@ teamKills <- {}  // Kills per team this round, used for steamroll detection
 teamKills[Constants.ETFTeam.TF_TEAM_RED] <- 0
 teamKills[Constants.ETFTeam.TF_TEAM_BLUE] <- 0
 
+redWins <- 0 // Round tracking
+blueWins <- 0
+roundThreshold <- 0
+multiStageMap <- false
+
 for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
 {
     hasRecievedCash[i] <- false

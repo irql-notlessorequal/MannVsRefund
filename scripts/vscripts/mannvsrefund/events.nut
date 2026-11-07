@@ -28,19 +28,15 @@ function OnGameEvent_teamplay_round_start(params)
     if (IsWaitingForPlayers())
         return
 
-    arenaMode = IsArenaMode()
     for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
         ResetBuybackState(i)
 
     ClearReviveMarkers()
-    ForceEnableUpgrades(2)
     ResetCanteens()
     EnsureUpgradeZonesAtResupply()
 
     RecountTeamPlayers()
     PrecacheAssets()
-
-    ClientPrint(null, Constants.EHudNotify.HUD_PRINTTALK, CREDITS_MESSAGE)
 
     // Wait out the round start freeze before playing the voice line
     local freeze = Convars.GetFloat("tf_player_movement_restart_freeze")
@@ -66,8 +62,8 @@ function OnGameEvent_teamplay_round_start(params)
     })
 }
 
-// full_round is false for the end of a mini-round (e.g. one stage of a multi-stage map),
-// so cash and upgrades only get wiped once the whole round/map is actually over
+// We only reset if enough rounds were played,
+// you changed the upgrades file or played a full multi-stage map
 function OnGameEvent_teamplay_round_win(params)
 {
     if (DEBUG)
@@ -75,8 +71,29 @@ function OnGameEvent_teamplay_round_win(params)
 
     roundRunning = false
 
-    if (params.full_round || changedFile)
+    if (!arenaMode)
+    {
+        if (params.team == Constants.ETFTeam.TF_TEAM_RED)
+            redWins++
+        else if (params.team == Constants.ETFTeam.TF_TEAM_BLUE)
+            blueWins++
+    }
+
+    local thresholdReached = (redWins >= roundThreshold ||
+                              blueWins >= roundThreshold) && !arenaMode
+    local shouldResetMoney = thresholdReached && (!multiStageMap || params.full_round)
+
+    if (DEBUG)
+        printl("round_win: threshold_reached=" +
+               thresholdReached + " should_reset_money=" + shouldResetMoney)
+
+    if (shouldResetMoney)
+    {
         ResetPlayers()
+
+        redWins = 0
+        blueWins = 0
+    }
 }
 
 function OnGameEvent_teamplay_restart_round(params)

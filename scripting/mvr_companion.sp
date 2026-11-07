@@ -48,6 +48,10 @@ static bool g_bUpgradeFilePending = false;
 static bool g_bMapTimelimitStalemate = false;
 static bool g_bGameOver = false;
 
+#if !defined(NO_SDK_WORKAROUND)
+static Handle hReapplyPlayerUpgrades = INVALID_HANDLE;
+#endif
+
 char g_PendingUpgradeFile[MAX_UPGRADE_PATH];
 
 public Plugin myinfo =
@@ -61,6 +65,27 @@ public Plugin myinfo =
 
 public void OnPluginStart()
 {
+#if !defined(NO_SDK_WORKAROUND)
+    Handle hGameConf = LoadGameConfigFile("tf2.mannvsrefund");
+    if (hGameConf == null)
+    {
+        SetFailState("Failed to the GameData file 'tf2.mannvsrefund.txt'");
+    }
+
+    StartPrepSDKCall(SDKCall_Player);
+    if (!PrepSDKCall_SetFromConf(hGameConf, SDKConf_Signature, "CTFPlayer::ReapplyPlayerUpgrades"))
+    {
+        SetFailState("Failed to call PrepSDKCall_SetFromConf for workaround.");
+    }
+
+    if ((hReapplyPlayerUpgrades = EndPrepSDKCall()) == INVALID_HANDLE)
+    {
+        SetFailState("Failed to create SDKCall for workaround.");
+    }
+
+    delete hGameConf;
+#endif
+
     HookEvent("teamplay_round_start", Event_RoundStart, EventHookMode_Post);
     HookEvent("teamplay_round_stalemate", Event_RoundStalemate, EventHookMode_Post);
     HookEvent("teamplay_win_panel", Event_WinPanel, EventHookMode_Post);
@@ -127,8 +152,8 @@ public Action Command_SetMvmUpgrades(int client, int args)
         return Plugin_Handled;
     }
 
-    // We can't make clients download it live without some rafmod
-    // tier horrors, so we'll assume you know what you are doing.
+    /* We can't make clients download it live without some rafmod
+     * tier horrors, so we'll assume you know what you are doing. */
     AddFileToDownloadsTable(path);
 
     strcopy(g_PendingUpgradeFile, sizeof(g_PendingUpgradeFile), path);
@@ -184,7 +209,26 @@ public void Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
     g_bMapTimelimitStalemate = false;
     g_bGameOver = false;
 
+#if !defined(NO_SDK_WORKAROUND)
+    bool wasPending = g_bUpgradeFilePending;
+#endif
+
     ApplyPendingUpgradeFile();
+
+#if !defined(NO_SDK_WORKAROUND)
+    /* This is required until the following or similar gets merged.
+     * https://github.com/ValveSoftware/source-sdk-2013/pull/2197 */
+    if (!wasPending)
+    {
+        for (int client = 1; client <= MaxClients; client++)
+        {
+            if (IsClientInGame(client) && !IsFakeClient(client))
+            {
+                SDKCall(hReapplyPlayerUpgrades, client);
+            }
+        }
+    }
+#endif
 }
 
 public void Event_RoundStalemate(Event event, const char[] name, bool dontBroadcast)

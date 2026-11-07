@@ -16,7 +16,6 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-const CREDITS_MESSAGE = "\x01Mann versus Refund. Created by \x079E2A2Brake\x01."
 const REFUND_PROMPT = "Hold RELOAD to reset your current upgrades."
 const DEBUG = false // Set to true to print round info to the server console
 const MONEY_VANISH_SOUND = "mvm/mvm_money_vanish.wav"
@@ -102,3 +101,74 @@ function IsWaitingForPlayers()
     local rules = Entities.FindByClassname(null, "tf_gamerules")
     return rules != null && NetProps.GetPropBool(rules, "m_bInWaitingForPlayers")
 }
+
+function IsMultiStageMap()
+{
+    local gamerules = Entities.FindByClassname(null, "tf_gamerules")
+    if (gamerules == null || !NetProps.HasProp(gamerules, "m_nGameType"))
+        return false
+
+    local gameType = NetProps.GetPropInt(gamerules, "m_nGameType")
+    local roundCount = 0
+    local round = null
+
+    while ((round = Entities.FindByClassname(round, "team_control_point_round")) != null)
+        roundCount++
+
+    if (roundCount <= 1)
+        return false
+
+    // Payload / Payload Race
+    if (gameType == 3)
+        return true
+
+    // Not a Control Point map?
+    if (gameType != 2)
+        return false
+
+    local restrictedCount = 0
+    local highestPriority = null
+    local highestPriorityCount = 0
+
+    round = null
+
+    while ((round = Entities.FindByClassname(round, "team_control_point_round")) != null)
+    {
+        if (!NetProps.HasProp(round, "m_iInvalidCapWinner") ||
+            !NetProps.HasProp(round, "m_nPriority"))
+            return false
+
+        local restrictedWinner = NetProps.GetPropInt(round, "m_iInvalidCapWinner")
+        local priority = NetProps.GetPropInt(round, "m_nPriority")
+
+        if (restrictedWinner > 1)
+            restrictedCount++
+
+        if (highestPriority == null || priority > highestPriority)
+        {
+            highestPriority = priority
+            highestPriorityCount = 1
+        }
+        else if (priority == highestPriority)
+        {
+            highestPriorityCount++
+        }
+    }
+
+    return restrictedCount == roundCount && highestPriorityCount == 1
+}
+
+function GetRoundThreshold()
+{
+    // See https://github.com/ValveSoftware/source-sdk-2013/pull/2197
+    if (!hasCompanion)
+        return 0
+    else {
+        if (Convars.GetInt("mp_scrambleteams_auto") != 1)
+            return 0
+        else
+            return Convars.GetInt("mp_scrambleteams_auto_windifference")
+    }
+}
+
+ForceEnableUpgrades(2)

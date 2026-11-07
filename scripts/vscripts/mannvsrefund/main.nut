@@ -34,8 +34,10 @@ if ("self" in this && self.GetName() == "mvr_sourcemod")
     printl("Mann vs. Refund companion was detected.")
 }
 
-// We actually need to check for this every round now.
+// We don't need to check for this every round...
 Refund.arenaMode = IsArenaMode()
+Refund.multiStageMap = IsMultiStageMap()
+Refund.roundThreshold = GetRoundThreshold()
 
 // worldspawn is never removed, so a think on it runs for the whole map.
 // bindenv keeps the script's own functions and variables visible inside the think.
