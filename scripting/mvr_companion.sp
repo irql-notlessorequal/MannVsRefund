@@ -59,7 +59,7 @@ public Plugin myinfo =
     name = "Mann vs. Refund Companion",
     author = "IRQL_NOT_LESS_OR_EQUAL",
     description = "Enables additional functionality",
-    version = "2026.11.03",
+    version = "2026.11.07",
     url = "https://github.com/irql-notlessorequal/MannVsRefund"
 };
 
