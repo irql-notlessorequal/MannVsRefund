@@ -328,18 +328,33 @@ function OnGameEvent_upgrades_file_changed(params)
 
 function OnScriptHook_OnTakeDamage(params)
 {
-    // Try to escape this path as quick as possible.
-    if (!(params.damage_type & Constants.FDmgType.DMG_SLASH) ||
-          params.damage_stats != Constants.ETFDmgCustom.TF_DMG_CUSTOM_BURNING)
+    local damage_type = params.damage_type
+
+    if (!(damage_type & (Constants.FDmgType.DMG_SLASH |
+                         Constants.FDmgType.DMG_ENERGYBEAM)))
         return
 
-    local weapon = params.weapon
-    if (weapon == null || weapon.GetClassname() != "tf_weapon_jar_gas")
-        return
+    if ((damage_type & Constants.FDmgType.DMG_ENERGYBEAM) &&
+        params.damage_custom == Constants.ETFDmgCustom.TF_DMG_CUSTOM_PLASMA)
+    {
+        if (DEBUG)
+            printl("shield burn: damage " + params.damage)
 
-    if (DEBUG)
-        printl("gas burst: damage " + params.damage + " -> " + GAS_BLAST_DAMAGE + ", type " + params.damage_type)
+        params.damage *= SHIELD_BURN_DAMAGE_SCALE
+    }
+    else
+    {
+        if (params.damage_custom != Constants.ETFDmgCustom.TF_DMG_CUSTOM_BURNING)
+            return
 
-    params.damage = GAS_BLAST_DAMAGE
-    params.damage_type = params.damage_type | Constants.FDmgType.DMG_BLAST | Constants.FDmgType.DMG_BURN
+        local weapon = params.weapon
+        if (weapon == null || weapon.GetClassname() != GAS_PASSER_CLASS_NAME)
+            return
+
+        if (DEBUG)
+            printl("gas burst: damage " + params.damage + " -> " + GAS_BLAST_DAMAGE + ", type " + damage_type)
+
+        params.damage = GAS_BLAST_DAMAGE
+        params.damage_type = damage_type | Constants.FDmgType.DMG_BLAST | Constants.FDmgType.DMG_BURN
+    }
 }

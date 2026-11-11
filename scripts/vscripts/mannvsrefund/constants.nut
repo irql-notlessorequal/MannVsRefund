@@ -82,8 +82,10 @@ const WAVE_CACHE_INTERVAL = 0.5      // How often respawn wave lengths are recal
 const MONEY_PICKUP_SOUND = "mvm/mvm_money_pickup.wav"
 const MONEY_PICKUP_COOLDOWN = 1.0    // Adjust this to avoid hearing "mvm/mvm_money_pickup.wav" constantly
 
-// Gas Passer Nerf
-const GAS_BLAST_DAMAGE = 350         // Base damage before resistances applied.
+// Balancing
+const GAS_BLAST_DAMAGE = 350           // Base damage before resistances applied.
+const GAS_PASSER_CLASS_NAME = "tf_weapon_jar_gas"
+const SHIELD_BURN_DAMAGE_SCALE = 0.25  // Reduce by a factor of this on server tick.
 
 // MvM sounds aren't precached on non-MvM maps
 function PrecacheAssets()
