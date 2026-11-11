@@ -173,10 +173,11 @@ function OnGameEvent_player_team(params)
     if (client == null || !client.IsValid())
         return
 
-    local idx = client.GetEntityIndex()
     // I love autobalance!
     RemoveReviveMarker(client)
+    ResetCanteens(client)
 
+    local idx = client.GetEntityIndex()
     canteenWatch[idx] <- { charges = 0, currency = 0 }
 
     // Nuh-uh.
