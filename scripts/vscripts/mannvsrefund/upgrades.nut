@@ -16,29 +16,29 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-function DoRefund(client)
+function DoRefund(client, idx)
 {
     // A player could just switch loadout at the resupply
     // locker and keep some of their upgrades for free...
     RemoveUpgradesFromAllClasses(client)
 
-    // Reset all canteens on the player...
-    ResetCanteens(client)
+    // Flag the player for a canteen reset.
+    canteenWatch[idx].reset = true
 
     // The refund flag removes upgrades but doesn't return the money,
     // so restore the player's total earnings for this round
-    local earned = earnedCash[client.entindex()]
+    local earned = earnedCash[idx]
     if (earned > client.GetCurrency())
         client.SetCurrency(earned)
+
+    // Respawn the player
+    client.ForceRespawn()
 
     EmitSoundEx({
         sound_name  = MONEY_VANISH_SOUND,
         entity      = client,
         filter_type = Constants.EScriptRecipientFilter.RECIPIENT_FILTER_SINGLE_PLAYER
     })
-
-    // Respawn the player
-    client.ForceRespawn()
 }
 
 function ResetPlayerData(idx)
@@ -46,7 +46,7 @@ function ResetPlayerData(idx)
     hasRecievedCash[idx] = false
     earnedCash[idx] = 0
     moneySoundTime[idx] = 0.0
-    canteenWatch[idx] = { charges = 0, currency = 0 }
+    canteenWatch[idx] = { charges = 0, currency = 0, reset = true }
     ResetRefundState(idx)
     ResetBuybackState(idx)
 }
@@ -120,7 +120,7 @@ function RemoveUpgradesFromAllClasses(client, health = null)
     for (local i = 1; i <= Constants.ETFClass.TF_CLASS_ENGINEER; i++)
     {
         client.SetPlayerClass(i)
-        client.Regenerate(true)
+        client.Regenerate(false)
         client.GrantOrRemoveAllUpgrades(true, false)
     }
 
@@ -134,22 +134,30 @@ function IsArenaMode()
     return Entities.FindByClassname(null, "tf_logic_arena") != null
 }
 
-function ResetCanteens(client = null)
+function ResetCanteenForClient(client)
 {
     local ent = null
+    local done = false
+
     while (ent = Entities.FindByClassname(ent, "tf_powerup_bottle"))
     {
-        if (client != null && NetProps.GetPropEntity(ent, "m_hOwnerEntity") != client)
+        if (NetProps.GetPropEntity(ent, "m_hOwnerEntity") != client)
             continue
 
         NetProps.SetPropInt(ent, "m_usNumCharges", 0)
         NetProps.SetPropBool(ent, "m_bActive", false)
+        ent.RemoveAttribute("powerup charges")
         ent.RemoveAttribute("critboost")
         ent.RemoveAttribute("ubercharge")
         ent.RemoveAttribute("building instant upgrade")
         ent.RemoveAttribute("refill_ammo")
         ent.RemoveAttribute("recall")
+        
+        done = true
+        break
     }
+
+    return done
 }
 
 function ClearUpgradeStations()

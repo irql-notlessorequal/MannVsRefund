@@ -52,5 +52,5 @@ for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
     buybackState[i] <- { deathTime = -1.0, window = -1.0, held = false, nextHud = 0.0,
                          estimate = -1.0, hud = null, skip = false, opened = false, lastPrice = 0.0 }
     moneySoundTime[i] <- 0.0
-    canteenWatch[i] <- { charges = 0, currency = 0 }
+    canteenWatch[i] <- { charges = 0, currency = 0, reset = false }
 }

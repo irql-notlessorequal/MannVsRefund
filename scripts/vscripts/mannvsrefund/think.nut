@@ -96,7 +96,8 @@ function CheckRefundButtons(now)
 
         local state = refundState[i]
         // Dead players never get the prompt or the trigger
-        local zone = NetProps.GetPropInt(client, "m_lifeState") == 0 && NetProps.GetPropBool(client, "m_Shared.m_bInUpgradeZone")
+        local zone = NetProps.GetPropInt(client, "m_lifeState") == 0 &&
+                     NetProps.GetPropBool(client, "m_Shared.m_bInUpgradeZone")
         if (!zone)
         {
             if (state.opened)
@@ -115,7 +116,7 @@ function CheckRefundButtons(now)
         if (state.opened)
         {
             if (held && !state.held)
-                DoRefund(client)
+                DoRefund(client, i)
         }
         else
         {

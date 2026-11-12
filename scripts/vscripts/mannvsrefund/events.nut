@@ -32,7 +32,6 @@ function OnGameEvent_teamplay_round_start(params)
         ResetBuybackState(i)
 
     ClearReviveMarkers()
-    ResetCanteens()
     EnsureUpgradeZonesAtResupply()
 
     RecountTeamPlayers()
@@ -121,21 +120,27 @@ function OnGameEvent_player_spawn(params)
     // Spawning, whether revived or respawned normally, ends their marker
     RemoveReviveMarker(client)
 
+    local entindex = client.entindex()
     // ...and their chance to buy back
-    local buyback = buybackState[client.entindex()]
+    local buyback = buybackState[entindex]
     if (DEBUG && buyback.estimate > 0.0)
         printl("buyback: respawn estimate was off by " + (Time() - buyback.estimate) + "s")
-    ResetBuybackState(client.entindex())
+    ResetBuybackState(entindex)
 
-    if (!hasRecievedCash[client.entindex()])
+    if (!hasRecievedCash[entindex])
     {
         // We need to defer the upgrade reset on high-edict scenarios...
-        EnqueueWipe(client.entindex())
+        EnqueueWipe(entindex)
 
         client.SetCurrency(START_CASH)
-        earnedCash[client.entindex()] = START_CASH
-        hasRecievedCash[client.entindex()] = true
+        earnedCash[entindex] = START_CASH
+        hasRecievedCash[entindex] = true
     }
+
+    // Who doesn't love scanning all players per player.
+    local canteen = canteenWatch[entindex]
+    if (canteen.reset && ResetCanteenForClient(client))
+        canteen.reset = false
 }
 
 function OnGameEvent_player_disconnect(params)
@@ -165,20 +170,18 @@ function OnGameEvent_player_team(params)
     if (params.team == params.oldteam)
         return
 
-    // Only skip if the player came from spectator mode.
-    if (params.team < 2)
-        return
-
     local client = GetPlayerFromUserID(params.userid)
     if (client == null || !client.IsValid())
         return
 
+    local idx = client.GetEntityIndex()
+    canteenWatch[idx] <- { charges = 0, currency = 0, reset = true }
+
+    if (params.team < Constants.ETFTeam.TF_TEAM_RED)
+        return
+
     // I love autobalance!
     RemoveReviveMarker(client)
-    ResetCanteens(client)
-
-    local idx = client.GetEntityIndex()
-    canteenWatch[idx] <- { charges = 0, currency = 0 }
 
     // Nuh-uh.
     if (idx in buybackState)
@@ -229,6 +232,7 @@ function OnGameEvent_player_builtobject(params)
     if (DEBUG && hasLevel)
         printl("building level after: " + NetProps.GetPropInt(building, "m_iUpgradeLevel"))
 }
+
 function OnGameEvent_player_death(params)
 {
     if (params.death_flags & FLAG_DEAD_RINGER)
