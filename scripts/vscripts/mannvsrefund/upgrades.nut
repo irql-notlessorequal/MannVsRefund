@@ -136,12 +136,13 @@ function IsArenaMode()
 
 function ResetCanteenForClient(client)
 {
-    local ent = null
     local done = false
+    local count = NetProps.GetPropArraySize(client, "m_hMyWearables")
 
-    while (ent = Entities.FindByClassname(ent, "tf_powerup_bottle"))
+    for (local i = 0; i < count; i++)
     {
-        if (NetProps.GetPropEntity(ent, "m_hOwnerEntity") != client)
+        local ent = NetProps.GetPropEntityArray(client, "m_hMyWearables", i)
+        if (!ent || ent.GetClassname() != "tf_powerup_bottle")
             continue
 
         NetProps.SetPropInt(ent, "m_usNumCharges", 0)
@@ -152,7 +153,7 @@ function ResetCanteenForClient(client)
         ent.RemoveAttribute("building instant upgrade")
         ent.RemoveAttribute("refill_ammo")
         ent.RemoveAttribute("recall")
-        
+
         done = true
         break
     }

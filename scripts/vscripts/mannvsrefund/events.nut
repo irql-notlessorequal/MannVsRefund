@@ -137,7 +137,7 @@ function OnGameEvent_player_spawn(params)
         hasRecievedCash[entindex] = true
     }
 
-    // Who doesn't love scanning all players per player.
+    // This is a horrible workaround.
     local canteen = canteenWatch[entindex]
     if (canteen.reset && ResetCanteenForClient(client))
         canteen.reset = false
