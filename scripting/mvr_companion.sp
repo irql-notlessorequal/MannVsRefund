@@ -25,6 +25,7 @@
 #endif
 
 #define MAX_UPGRADE_PATH 260
+#define UPGRADE_SOUND_MIN_GAP 1.0
 #define SNDVOL_REDUCED 0.8
 
 static const int STALEMATE_SERVER_TIMELIMIT = 2;
@@ -50,6 +51,7 @@ static bool g_bGameOver = false;
 
 #if !defined(NO_SDK_WORKAROUND)
 static Handle hReapplyPlayerUpgrades = INVALID_HANDLE;
+float g_flLastUpgradeSound[MAXPLAYERS];
 #endif
 
 char g_PendingUpgradeFile[MAX_UPGRADE_PATH];
@@ -59,7 +61,7 @@ public Plugin myinfo =
     name = "Mann vs. Refund Companion",
     author = "IRQL_NOT_LESS_OR_EQUAL",
     description = "Enables additional functionality",
-    version = "2026.11.07",
+    version = "2026.11.12",
     url = "https://github.com/irql-notlessorequal/MannVsRefund"
 };
 
@@ -183,6 +185,23 @@ public Action Hook_NormalSound(int clients[MAXPLAYERS], int &numClients,
     }
     else
     {
+#if !defined(NO_SDK_WORKAROUND)
+        if (StrContains(sample, "mvm_bought_upgrade", false) != -1)
+        {
+            int target = entity;
+            if (target < 1 || target > MaxClients)
+                target = (numClients > 0) ? clients[0] : 0;
+
+            if (target >= 1 && target <= MaxClients)
+            {
+                float now = GetGameTime();
+                if (now - g_flLastUpgradeSound[target] < UPGRADE_SOUND_MIN_GAP)
+                    return Plugin_Handled;
+
+                g_flLastUpgradeSound[target] = now;
+            }
+        }
+#endif
         return Plugin_Continue;
     }
 }
@@ -334,4 +353,5 @@ void ApplyPendingUpgradeFile()
     g_PendingUpgradeFile[0] = '\0';
 }
 #undef SNDVOL_REDUCED
+#undef UPGRADE_SOUND_MIN_GAP
 #undef MAX_UPGRADE_PATH
