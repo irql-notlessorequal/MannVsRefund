@@ -17,6 +17,7 @@ You do not need any of the files in the assets folder unless you are using the o
 # Special Thanks
 
 - Lazyneer for the initial script that this was worked upon.
+- [Juice](https://github.com/JuicyKaiser) for the optional team-colored revive markers
 - [redsun.tf](https://redsun.tf/) for playtesting and feedback
 
 # License
