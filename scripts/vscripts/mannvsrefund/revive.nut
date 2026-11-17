@@ -80,6 +80,7 @@ function SpawnReviveMarker(victim)
         return
 
     NetProps.SetPropEntity(marker, "m_hOwner", victim)
+    NetProps.SetPropInt(marker, "m_fEffects", Constants.FEntityEffects.EF_NOSHADOW)
 
     marker.SetCollisionGroup(Constants.ECollisionGroup.COLLISION_GROUP_DEBRIS_TRIGGER)
     marker.SetTeam(victim.GetTeam())
