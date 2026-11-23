@@ -56,7 +56,7 @@ const TEAM_KILL_SHARE = 0.5
 // if one team is far ahead on kills this round, the other team earns more
 const STEAMROLL_MIN_KILLS = 20   // Total kills needed before a steamroll can be declared
 const STEAMROLL_RATIO = 2.0      // Leading team needs this many times the other team's kills
-const STEAMROLL_BONUS = 1.1      // Income multiplier for the losing team
+const STEAMROLL_BONUS = 1.2      // Income multiplier for the losing team
 
 // MvM buyback logic.
 const BUYBACK_MAX_COST = 300         // Price right after dying
