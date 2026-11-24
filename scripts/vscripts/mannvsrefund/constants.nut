@@ -26,6 +26,7 @@ const OBJECT_TYPE_SAPPER = 3
 const UPGRADE_VO_COUNT = 11
 const FLAG_DEAD_RINGER = 32
 const REFUND_HUD_INTERVAL = 1.0
+const ONE_TICK = 0.0152
 
 // This requires the custom model in the assets folder.
 const TEAMCOLOR_TOMBSTONE_MODEL = "models/props_mvm/mvm_revive_tombstone_teamcolor.mdl"
@@ -59,12 +60,10 @@ const STEAMROLL_RATIO = 2.0      // Leading team needs this many times the other
 const STEAMROLL_BONUS = 1.2      // Income multiplier for the losing team
 
 // MvM buyback logic.
-const BUYBACK_MAX_COST = 300         // Price right after dying
-const BUYBACK_MIN_COST = 100         // Price just before buy-back closes
-const BUYBACK_CUTOFF = 3.0           // Buy-back closes this many seconds before the respawn
+const BUYBACK_CUTOFF = 4.0           // Buy-back closes this many seconds before the respawn
 const BUYBACK_THINK_INTERVAL = 0.05  // How often dead players' buttons are checked
 const BUYBACK_IDLE_INTERVAL = 0.25   // Think rate when nobody is dead
-const BUYBACK_HUD_INTERVAL = 0.92    // How often the HUD text is refreshed
+const BUYBACK_HUD_INTERVAL = 1.0     // How often the HUD text is refreshed
 const BUYBACK_PRICE_STEP = 20        // The price drops in steps of this much
 const BUYBACK_DENIED_SOUND = "replay/cameracontrolerror.wav"
 const BUYBACK_BOUGHT_IN_SOUND = "mvm/mvm_bought_in.wav"

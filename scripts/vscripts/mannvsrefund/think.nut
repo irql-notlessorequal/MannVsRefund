@@ -222,24 +222,24 @@ function OnWorldSpawnThink()
         if (state.skip)
             continue
 
-        if (remaining - BUYBACK_CUTOFF <= 0.0)
+        if (remaining - BUYBACK_CUTOFF <= -BUYBACK_HUD_INTERVAL)
         {
             HideHudText(client, state)
             continue
         }
 
         fast = true
-        local price = GetBuybackPrice(state.window, remaining)
+        local price = GetBuybackPrice(client, state.window, remaining)
         if (pressed)
         {
             TryBuyback(client, price, state)
             continue
         }
 
-        if (price != state.lastPrice && now >= state.nextHud)
+        if (now >= state.nextHud)
         {
             state.lastPrice = price
-            state.nextHud = now + BUYBACK_HUD_INTERVAL
+            state.nextHud = (now + BUYBACK_HUD_INTERVAL) - ONE_TICK
             ShowHudText(client, state, "vscript_buyback_hud",
                         format("Press RELOAD to buy back into the game for $%d", price),
                         BUYBACK_HUD_CHANNEL, BUYBACK_HUD_INTERVAL, 0.33)

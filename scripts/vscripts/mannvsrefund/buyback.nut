@@ -206,9 +206,9 @@ function GetRespawnTime(client)
     return nextWave
 }
 
-// The price falls from BUYBACK_MAX_COST to BUYBACK_MIN_COST
-// as the cutoff approaches, stepping by BUYBACK_PRICE_STEP
-function GetBuybackPrice(window, remaining)
+// The price falls from FLAG_CAPTURE_CASH to KILL_CASH as the cutoff
+// approaches, then scaled by team size, stepping by BUYBACK_PRICE_STEP
+function GetBuybackPrice(client, window, remaining)
 {
     local span = window - BUYBACK_CUTOFF
     local fraction = span > 0.0 ? (remaining - BUYBACK_CUTOFF) / span : 0.0
@@ -217,8 +217,12 @@ function GetBuybackPrice(window, remaining)
     if (fraction > 1.0)
         fraction = 1.0
 
-    local price = (BUYBACK_MIN_COST + (BUYBACK_MAX_COST - BUYBACK_MIN_COST) * fraction + 0.5).tointeger()
-    return ((price + BUYBACK_PRICE_STEP / 2) / BUYBACK_PRICE_STEP) * BUYBACK_PRICE_STEP
+    local scale = GetCashScale(client.GetTeam())
+    local minCost = KILL_CASH * scale
+    local maxCost = FLAG_CAPTURE_CASH * scale
+    local price = (minCost + (maxCost - minCost) * fraction + 0.5).tointeger()
+    local stepped = ((price + BUYBACK_PRICE_STEP / 2) / BUYBACK_PRICE_STEP) * BUYBACK_PRICE_STEP
+    return stepped < BUYBACK_PRICE_STEP ? BUYBACK_PRICE_STEP : stepped
 }
 
 function BroadcastTeamColoredMessage(player, actionText)
