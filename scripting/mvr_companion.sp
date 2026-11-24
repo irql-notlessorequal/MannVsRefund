@@ -38,9 +38,7 @@ static const char companionAvailable[] = "mvr_sourcemod";
 static const char assets[][] =
 {
     "models/props_mvm/mvm_revive_tombstone_teamcolor.mdl",
-    "models/props_mvm/mvm_revive_tombstone_teamcolor.dx80.vtx",
     "models/props_mvm/mvm_revive_tombstone_teamcolor.dx90.vtx",
-    "models/props_mvm/mvm_revive_tombstone_teamcolor.sw.vtx",
     "models/props_mvm/mvm_revive_tombstone_teamcolor.vvd",
     "models/props_mvm/mvm_revive_tombstone_teamcolor.phy",
 };
@@ -61,7 +59,7 @@ public Plugin myinfo =
     name = "Mann vs. Refund Companion",
     author = "IRQL_NOT_LESS_OR_EQUAL",
     description = "Enables additional functionality",
-    version = "2026.11.12",
+    version = "2026.11.24",
     url = "https://github.com/irql-notlessorequal/MannVsRefund"
 };
 
