@@ -35,9 +35,9 @@ const CANTEEN_MAX_CHARGE_COST = 100
 
 // Currency amounts
 const START_CASH = 500
-const KILL_CASH = 100
-const ASSIST_CASH = 50
-const MEDIC_ASSIST_CASH = 100
+const KILL_CASH   = 80
+const ASSIST_CASH = 40
+const MEDIC_ASSIST_CASH = 80
 const POINT_CAPTURE_CASH = 100       // Whole team, on top of the game's own cap bonus
 const FLAG_CAPTURE_CASH = 300        // Player who captured the flag
 const FLAG_CAPTURE_TEAM_CASH = 200   // Rest of the capturer's team
