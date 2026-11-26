@@ -41,6 +41,13 @@ static const char assets[][] =
     "models/props_mvm/mvm_revive_tombstone_teamcolor.dx90.vtx",
     "models/props_mvm/mvm_revive_tombstone_teamcolor.vvd",
     "models/props_mvm/mvm_revive_tombstone_teamcolor.phy",
+    "materials/props_mvm/mvm_revive_tombstone_base_blue.vmt",
+    "materials/props_mvm/mvm_revive_tombstone_base_blue.vtf",
+    "materials/props_mvm/mvm_revive_heavy_blue.vmt",
+    "materials/props_mvm/mvm_revive_heavy_blue.vtf",
+    "materials/props_mvm/mvm_revive_heavy_darker_blue.vmt",
+    "materials/props_mvm/mvm_revive_heavy_rim_blue.vmt",
+    "materials/props_mvm/mvm_revive_hologram_blue.vtf"
 };
 
 static bool g_bUpgradeFilePending = false;
@@ -59,7 +66,7 @@ public Plugin myinfo =
     name = "Mann vs. Refund Companion",
     author = "IRQL_NOT_LESS_OR_EQUAL",
     description = "Enables additional functionality",
-    version = "2026.11.24",
+    version = "2026.11.26",
     url = "https://github.com/irql-notlessorequal/MannVsRefund"
 };
 
