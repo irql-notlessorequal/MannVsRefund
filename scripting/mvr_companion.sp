@@ -244,13 +244,7 @@ public void Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
      * https://github.com/ValveSoftware/source-sdk-2013/pull/2197 */
     if (!wasPending)
     {
-        for (int client = 1; client <= MaxClients; client++)
-        {
-            if (IsClientInGame(client) && !IsFakeClient(client))
-            {
-                SDKCall(hReapplyPlayerUpgrades, client);
-            }
-        }
+        RequestFrame(Frame_ReapplyUpgrades, 1);
     }
 #endif
 }
@@ -300,6 +294,20 @@ public void Event_RoundWin(Event event, const char[] name, bool dontBroadcast)
 }
 
 #undef PLAY_SOUND_TO_CLIENT
+
+void Frame_ReapplyUpgrades(int client)
+{
+    while (client <= MaxClients && (!IsClientInGame(client) || IsFakeClient(client)))
+    {
+        client++;
+    }
+
+    if (client <= MaxClients)
+    {
+        SDKCall(hReapplyPlayerUpgrades, client);
+        RequestFrame(Frame_ReapplyUpgrades, client + 1);
+    }
+}
 
 stock bool IsValidUpgradePath(const char[] path)
 {
